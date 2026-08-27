@@ -182,7 +182,7 @@ model ProductEmbedding {
   model       String                      @default("text-embedding-3-small")
   contentHash String
   createdAt   DateTime                    @default(now())
-  updatedAt   DateTime                   @updatedAt
+  updatedAt   DateTime                    @updatedAt
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -190,7 +190,7 @@ model ProductEmbedding {
   @@map("product_embeddings")
 }
 
-// ─── M5 Cart, Orders, Policy & Payments ──────────────────────
+// ─── M5 Cart, Orders & Policy Gate ───────────────────────────
 
 enum OrderStatus {
   PENDING_APPROVAL
@@ -205,14 +205,6 @@ enum PolicyDecision {
   AUTO_APPROVED
   REQUIRES_APPROVAL
   REJECTED
-}
-
-enum PaymentStatus {
-  CREATED
-  PENDING
-  SUCCESS
-  FAILED
-  REFUNDED
 }
 
 model Cart {
@@ -257,14 +249,11 @@ model Order {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  user         User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  items        OrderItem[]
-  payments     Payment[]
-  policyAudits OrderPolicyDecision[]
+  user  User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items OrderItem[]
 
   @@index([userId])
   @@index([status])
-  @@index([razorpayOrderId])
   @@map("orders")
 }
 
@@ -283,43 +272,4 @@ model OrderItem {
   @@index([orderId])
   @@index([productId])
   @@map("order_items")
-}
-
-model OrderPolicyDecision {
-  id          String         @id @default(cuid())
-  orderId     String
-  decision    PolicyDecision
-  reason      String
-  spendLimit  Float?
-  orderAmount Float?
-  evaluatedAt DateTime       @default(now())
-  metadata    Json           @default("{}")
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([orderId])
-  @@index([decision])
-  @@map("order_policy_decisions")
-}
-
-model Payment {
-  id                String        @id @default(cuid())
-  orderId           String
-  amount            Float
-  currency          String        @default("INR")
-  status            PaymentStatus @default(CREATED)
-  razorpayOrderId   String?
-  razorpayPaymentId String?
-  razorpaySignature String?
-  failureReason     String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
-
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
-
-  @@index([orderId])
-  @@index([status])
-  @@index([razorpayOrderId])
-  @@index([razorpayPaymentId])
-  @@map("payments")
 }

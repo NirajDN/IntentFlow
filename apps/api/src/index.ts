@@ -1,6 +1,13 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: ".env",
+});
+
 import express from "express";
 import cors from "cors";
+import ordersRouter from "./routes/orders.js";
+import cartRouter from "./routes/cart.js";
 import helmet from "helmet";
 import logger from "./lib/logger.js";
 import healthRouter from "./routes/health.js";
@@ -11,7 +18,6 @@ import productsRouter from "./routes/products.js";
 import inventoryRouter from "./routes/inventory.js";
 import searchRouter from "./routes/search.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
-
 const app = express();
 const PORT = parseInt(process.env["API_PORT"] ?? "4000", 10);
 
@@ -19,7 +25,7 @@ const PORT = parseInt(process.env["API_PORT"] ?? "4000", 10);
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3000",
+    origin: "http://localhost:3000",
     credentials: true,
   })
 );
@@ -42,6 +48,8 @@ app.use("/api/categories", categoriesRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/inventory", inventoryRouter);
 app.use("/api/search", searchRouter);
+app.use("/api/cart", cartRouter);
+app.use("/api/orders", ordersRouter);
 
 // ─── Fallthrough ─────────────────────────────────────────────
 app.use(notFoundHandler);

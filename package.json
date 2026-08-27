@@ -28,5 +28,8 @@
     "@prisma/engines@5.22.0": true,
     "prisma@5.22.0": true,
     "unrs-resolver@1.12.2": true
+  },
+  "dependencies": {
+    "razorpay": "^2.9.8"
   }
 }

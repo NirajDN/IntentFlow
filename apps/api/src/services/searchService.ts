@@ -188,17 +188,58 @@ export async function searchProducts(
   // ── Step 1: Resolve category ID from slug/name if needed ─────────────────
   let resolvedCategoryId = categoryId;
   if (!resolvedCategoryId && categoryFilter) {
-    const cat = await prisma.category.findFirst({
+  // Prefer exact slug match first.
+  const bySlug = await prisma.category.findFirst({
+    where: {
+      slug: categoryFilter.toLowerCase().trim(),
+    },
+    select: { id: true },
+  });
+
+  if (bySlug) {
+    resolvedCategoryId = bySlug.id;
+  } else {
+    // Fall back to name match.
+    // If duplicate category names exist, prefer the category
+    // that is currently referenced by active products.
+    const categories = await prisma.category.findMany({
       where: {
-        OR: [
-          { slug: categoryFilter },
-          { name: { equals: categoryFilter, mode: "insensitive" } },
-        ],
+        name: {
+          equals: categoryFilter.trim(),
+          mode: "insensitive",
+        },
       },
       select: { id: true },
     });
-    if (cat) resolvedCategoryId = cat.id;
+
+   if (categories.length === 1) {
+  const onlyCategory = categories[0];
+
+  if (onlyCategory) {
+    resolvedCategoryId = onlyCategory.id;
   }
+} else if (categories.length > 1) {
+      const categoryIds = categories.map((category) => category.id);
+
+      const activeProduct = await prisma.product.findFirst({
+        where: {
+          categoryId: { in: categoryIds },
+          isActive: true,
+        },
+        select: {
+          categoryId: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      if (activeProduct?.categoryId) {
+        resolvedCategoryId = activeProduct.categoryId;
+      }
+    }
+  }
+}
 
   // ── Step 2: Build WHERE clause for authoritative hard filters ────────────
   const where: Record<string, unknown> = {};
