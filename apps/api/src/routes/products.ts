@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { apiError, apiSuccess, CsvImportResult, CsvRowError } from "@intentflow/shared";
 import prisma from "@intentflow/database";
 import { authenticateUser, requireRole, AuthenticatedRequest } from "../middleware/auth.js";
+import { indexProduct } from "../services/embeddingService.js";
 import type { Prisma } from "@prisma/client";
 
 const router = Router();
@@ -517,6 +518,9 @@ router.post(
         },
       });
 
+      // Non-blocking trigger to synchronize product embedding
+      indexProduct(product).catch(() => {});
+
       res.status(201).json(apiSuccess(product));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create product";
@@ -654,6 +658,9 @@ router.patch(
           variants: true,
         },
       });
+
+      // Non-blocking trigger to synchronize product embedding if semantic fields changed
+      indexProduct(updated).catch(() => {});
 
       res.status(200).json(apiSuccess(updated));
     } catch (err: unknown) {

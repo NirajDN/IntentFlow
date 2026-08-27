@@ -15,6 +15,7 @@
     "lint": "npm run lint --workspaces --if-present",
     "db:generate": "prisma generate --schema=packages/database/prisma/schema.prisma",
     "db:migrate": "prisma migrate deploy --schema=packages/database/prisma/schema.prisma",
+    "embeddings:index": "npm run embeddings:index --workspace=@intentflow/api",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },

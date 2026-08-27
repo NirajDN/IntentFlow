@@ -9,7 +9,7 @@ export interface ProductSemanticInput {
   brand?: string | null;
   category?: { name: string } | string | null;
   tags?: string[] | null;
-  specifications?: Record<string, unknown> | null;
+  specifications?: unknown;
   deliveryInfo?: string | null;
   returnPolicy?: string | null;
   [key: string]: unknown;
