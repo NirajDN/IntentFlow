@@ -146,4 +146,4 @@ See [`.env.example`](.env.example) for all required variables. **Never commit `.
 
 ## License
 
-Private — Razorpay AI Buildathon submission.
+<!--Private — Razorpay AI Buildathon submission.-->
