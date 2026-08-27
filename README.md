@@ -1,8 +1,8 @@
 # IntentFlow
 
-> **AI proposes. Policy decides. Razorpay executes.**
+> <!--**AI proposes. Policy decides. Razorpay executes.**
 
-IntentFlow is an AI-native commerce orchestration platform built for the **Razorpay AI Buildathon — Track 01: AI Growth & Agentic Commerce**.
+<!--IntentFlow is an AI-native commerce orchestration platform built for the **Razorpay AI Buildathon — Track 01: AI Growth & Agentic Commerce**.-->
 
 ---
 
