@@ -1,0 +1,71 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── M1 Bootstrap Model ─────────────────────────────────────
+model HealthCheck {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  @@map("health_checks")
+}
+
+// ─── M2 Auth & Merchant Foundation ──────────────────────────
+
+enum Role {
+  BUYER
+  MERCHANT
+  ADMIN
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  name         String
+  role         Role       @default(BUYER)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  merchants    Merchant[]
+
+  @@map("users")
+}
+
+model Merchant {
+  id          String          @id @default(cuid())
+  name        String
+  slug        String          @unique
+  ownerId     String
+  description String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  policy      MerchantPolicy?
+
+  @@index([ownerId])
+  @@map("merchants")
+}
+
+model MerchantPolicy {
+  id                           String   @id @default(cuid())
+  merchantId                   String   @unique
+  currency                     String   @default("INR")
+  defaultAutonomousSpendLimit Float    @default(5000.0)
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  merchant                     Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId])
+  @@map("merchant_policies")
+}
