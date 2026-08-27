@@ -2,12 +2,14 @@
 // Learn more: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 // ─── M1 Bootstrap Model ─────────────────────────────────────
@@ -86,7 +88,7 @@ model Category {
 }
 
 model Product {
-  id             String           @id @default(cuid())
+  id             String            @id @default(cuid())
   merchantId     String
   categoryId     String?
   name           String
@@ -94,20 +96,21 @@ model Product {
   description    String?
   brand          String?
   price          Float
-  currency       String           @default("INR")
-  specifications Json             @default("{}")
-  tags           String[]         @default([])
+  currency       String            @default("INR")
+  specifications Json              @default("{}")
+  tags           String[]          @default([])
   imageUrl       String?
   deliveryInfo   String?
   returnPolicy   String?
-  isActive       Boolean          @default(true)
-  createdAt      DateTime         @default(now())
-  updatedAt      DateTime         @updatedAt
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
 
-  merchant       Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
-  category       Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  merchant       Merchant          @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  category       Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   inventory      Inventory?
   variants       ProductVariant[]
+  embedding      ProductEmbedding?
 
   @@unique([merchantId, slug])
   @@index([merchantId])
@@ -163,4 +166,21 @@ model ProductVariant {
   @@index([productId])
   @@index([sku])
   @@map("product_variants")
+}
+
+// ─── M4-A pgvector Foundation ────────────────────────────────
+
+model ProductEmbedding {
+  id          String                      @id @default(cuid())
+  productId   String                      @unique
+  embedding   Unsupported("vector(1536)")
+  model       String                      @default("text-embedding-3-small")
+  contentHash String
+  createdAt   DateTime                    @default(now())
+  updatedAt   DateTime                    @updatedAt
+
+  product     Product                     @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_embeddings")
 }

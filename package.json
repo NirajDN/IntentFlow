@@ -14,7 +14,7 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present",
     "db:generate": "prisma generate --schema=packages/database/prisma/schema.prisma",
-    "db:migrate": "prisma migrate dev --schema=packages/database/prisma/schema.prisma",
+    "db:migrate": "prisma migrate deploy --schema=packages/database/prisma/schema.prisma",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down"
   },
