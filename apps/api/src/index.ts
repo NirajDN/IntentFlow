@@ -9,6 +9,7 @@ import merchantsRouter from "./routes/merchants.js";
 import categoriesRouter from "./routes/categories.js";
 import productsRouter from "./routes/products.js";
 import inventoryRouter from "./routes/inventory.js";
+import searchRouter from "./routes/search.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 
 const app = express();
@@ -40,6 +41,7 @@ app.use("/api/merchants", merchantsRouter);
 app.use("/api/categories", categoriesRouter);
 app.use("/api/products", productsRouter);
 app.use("/api/inventory", inventoryRouter);
+app.use("/api/search", searchRouter);
 
 // ─── Fallthrough ─────────────────────────────────────────────
 app.use(notFoundHandler);
