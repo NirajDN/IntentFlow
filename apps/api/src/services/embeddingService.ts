@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import prisma from "@intentflow/database";
 import {
-  OpenAIEmbeddingProvider,
+  GeminiEmbeddingProvider,
   buildProductEmbeddingText,
   type EmbeddingProvider,
   type ProductSemanticInput,
@@ -28,7 +28,7 @@ let defaultProvider: EmbeddingProvider | null = null;
 
 export function getDefaultEmbeddingProvider(): EmbeddingProvider {
   if (!defaultProvider) {
-    defaultProvider = new OpenAIEmbeddingProvider();
+    defaultProvider = new GeminiEmbeddingProvider();
   }
   return defaultProvider;
 }

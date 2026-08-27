@@ -8,5 +8,8 @@
     "build": "tsc --project tsconfig.json",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "dev": "tsc --watch --project tsconfig.json"
+  },
+  "dependencies": {
+    "@google/genai": "^2.19.0"
   }
 }
