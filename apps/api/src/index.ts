@@ -6,6 +6,9 @@ import logger from "./lib/logger.js";
 import healthRouter from "./routes/health.js";
 import authRouter from "./routes/auth.js";
 import merchantsRouter from "./routes/merchants.js";
+import categoriesRouter from "./routes/categories.js";
+import productsRouter from "./routes/products.js";
+import inventoryRouter from "./routes/inventory.js";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
 
 const app = express();
@@ -19,8 +22,8 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: "1mb" }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // ─── Request Logging ─────────────────────────────────────────
 if (process.env["NODE_ENV"] !== "test") {
@@ -34,6 +37,9 @@ if (process.env["NODE_ENV"] !== "test") {
 app.use("/api/health", healthRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/merchants", merchantsRouter);
+app.use("/api/categories", categoriesRouter);
+app.use("/api/products", productsRouter);
+app.use("/api/inventory", inventoryRouter);
 
 // ─── Fallthrough ─────────────────────────────────────────────
 app.use(notFoundHandler);

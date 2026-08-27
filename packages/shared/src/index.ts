@@ -95,3 +95,149 @@ export interface UpdateMerchantInput {
   defaultAutonomousSpendLimit?: number;
   currency?: string;
 }
+
+// ─── M3 Catalog & Inventory Types ────────────────────────────
+
+export interface CategoryDTO {
+  id: string;
+  name: string;
+  slug: string;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+export interface CreateCategoryInput {
+  name: string;
+  slug?: string;
+}
+
+export interface ProductVariantDTO {
+  id: string;
+  productId: string;
+  name: string;
+  sku: string;
+  price: number;
+  specifications: Record<string, unknown>;
+  isActive: boolean;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+export interface CreateProductVariantInput {
+  name: string;
+  sku: string;
+  price: number;
+  specifications?: Record<string, unknown>;
+  isActive?: boolean;
+}
+
+export interface InventoryAdjustmentDTO {
+  id: string;
+  inventoryId: string;
+  quantityChange: number;
+  reason: string;
+  createdAt: string | Date;
+}
+
+export interface InventoryDTO {
+  id: string;
+  productId: string;
+  availableQuantity: number;
+  reservedQuantity: number;
+  soldQuantity: number;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  adjustments?: InventoryAdjustmentDTO[];
+}
+
+export interface ProductDTO {
+  id: string;
+  merchantId: string;
+  categoryId: string | null;
+  name: string;
+  slug: string;
+  description: string | null;
+  brand: string | null;
+  price: number;
+  currency: string;
+  specifications: Record<string, unknown>;
+  tags: string[];
+  imageUrl: string | null;
+  deliveryInfo: string | null;
+  returnPolicy: string | null;
+  isActive: boolean;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+  category?: CategoryDTO | null;
+  inventory?: InventoryDTO | null;
+  variants?: ProductVariantDTO[];
+}
+
+export interface CreateProductInput {
+  name: string;
+  slug?: string;
+  categoryId?: string;
+  categoryName?: string;
+  description?: string;
+  brand?: string;
+  price: number;
+  currency?: string;
+  specifications?: Record<string, unknown>;
+  tags?: string[];
+  imageUrl?: string;
+  deliveryInfo?: string;
+  returnPolicy?: string;
+  isActive?: boolean;
+  initialStock?: number;
+  sku?: string;
+  variants?: CreateProductVariantInput[];
+}
+
+export interface UpdateProductInput {
+  name?: string;
+  slug?: string;
+  categoryId?: string | null;
+  description?: string | null;
+  brand?: string | null;
+  price?: number;
+  currency?: string;
+  specifications?: Record<string, unknown>;
+  tags?: string[];
+  imageUrl?: string | null;
+  deliveryInfo?: string | null;
+  returnPolicy?: string | null;
+  isActive?: boolean;
+}
+
+export interface AdjustInventoryInput {
+  quantityChange: number;
+  reason: string;
+}
+
+export interface UpdateInventoryInput {
+  availableQuantity?: number;
+  reservedQuantity?: number;
+  soldQuantity?: number;
+  reason?: string;
+}
+
+export interface ProductPaginatedResponse {
+  items: ProductDTO[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface CsvRowError {
+  row: number;
+  error: string;
+  data?: Record<string, string>;
+}
+
+export interface CsvImportResult {
+  total: number;
+  imported: number;
+  failed: number;
+  errors: CsvRowError[];
+}

@@ -149,9 +149,26 @@ export default function MerchantDashboard() {
             </div>
             <span className="text-base font-bold tracking-tight">IntentFlow</span>
           </Link>
-          <span className="hidden md:inline-block text-xs font-mono text-[#7070a0]">
-            From intent to trusted transaction.
-          </span>
+          <nav className="hidden md:flex items-center gap-1 text-xs font-medium">
+            <Link
+              href="/merchant"
+              className="px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/20"
+            >
+              Overview &amp; Policy
+            </Link>
+            <Link
+              href="/merchant/products"
+              className="px-3 py-1.5 rounded-lg text-[#8080a8] hover:text-white hover:bg-white/[0.04] transition-all"
+            >
+              Product Catalog
+            </Link>
+            <Link
+              href="/merchant/inventory"
+              className="px-3 py-1.5 rounded-lg text-[#8080a8] hover:text-white hover:bg-white/[0.04] transition-all"
+            >
+              Inventory Management
+            </Link>
+          </nav>
         </div>
 
         <div className="flex items-center gap-4">

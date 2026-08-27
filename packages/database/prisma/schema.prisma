@@ -51,6 +51,7 @@ model Merchant {
 
   owner       User            @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   policy      MerchantPolicy?
+  products    Product[]
 
   @@index([ownerId])
   @@map("merchants")
@@ -68,4 +69,98 @@ model MerchantPolicy {
 
   @@index([merchantId])
   @@map("merchant_policies")
+}
+
+// ─── M3 Merchant Catalog & Inventory ────────────────────────
+
+model Category {
+  id        String    @id @default(cuid())
+  name      String
+  slug      String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  products  Product[]
+
+  @@map("categories")
+}
+
+model Product {
+  id             String           @id @default(cuid())
+  merchantId     String
+  categoryId     String?
+  name           String
+  slug           String
+  description    String?
+  brand          String?
+  price          Float
+  currency       String           @default("INR")
+  specifications Json             @default("{}")
+  tags           String[]         @default([])
+  imageUrl       String?
+  deliveryInfo   String?
+  returnPolicy   String?
+  isActive       Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  merchant       Merchant         @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  category       Category?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  inventory      Inventory?
+  variants       ProductVariant[]
+
+  @@unique([merchantId, slug])
+  @@index([merchantId])
+  @@index([categoryId])
+  @@index([name])
+  @@index([slug])
+  @@index([isActive])
+  @@map("products")
+}
+
+model Inventory {
+  id                String                @id @default(cuid())
+  productId         String                @unique
+  availableQuantity Int                   @default(0)
+  reservedQuantity  Int                   @default(0)
+  soldQuantity      Int                   @default(0)
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  product           Product               @relation(fields: [productId], references: [id], onDelete: Cascade)
+  adjustments       InventoryAdjustment[]
+
+  @@index([productId])
+  @@map("inventories")
+}
+
+model InventoryAdjustment {
+  id             String    @id @default(cuid())
+  inventoryId    String
+  quantityChange Int
+  reason         String
+  createdAt      DateTime  @default(now())
+
+  inventory      Inventory @relation(fields: [inventoryId], references: [id], onDelete: Cascade)
+
+  @@index([inventoryId])
+  @@map("inventory_adjustments")
+}
+
+model ProductVariant {
+  id             String   @id @default(cuid())
+  productId      String
+  name           String
+  sku            String   @unique
+  price          Float
+  specifications Json     @default("{}")
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@index([sku])
+  @@map("product_variants")
 }
