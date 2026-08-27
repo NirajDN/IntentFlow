@@ -4,7 +4,8 @@
     "outDir": "./dist",
     "paths": {
       "@intentflow/shared": ["../../packages/shared/src/index.ts"],
-      "@intentflow/database": ["../../packages/database/src/index.ts"]
+      "@intentflow/database": ["../../packages/database/src/index.ts"],
+      "@intentflow/ai": ["../../packages/ai/src/index.ts"]
     }
   },
   "include": ["src"],
