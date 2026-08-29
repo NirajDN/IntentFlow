@@ -165,6 +165,12 @@ export default function MerchantProductsPage() {
               Overview &amp; Policy
             </Link>
             <Link
+              href="/merchant/orders"
+              className="px-3 py-1.5 rounded-lg text-[#8080a8] hover:text-white hover:bg-white/[0.04] transition-all"
+            >
+              Orders
+            </Link>
+            <Link
               href="/merchant/products"
               className="px-3 py-1.5 rounded-lg bg-violet-500/10 text-violet-300 border border-violet-500/20"
             >
@@ -174,7 +180,7 @@ export default function MerchantProductsPage() {
               href="/merchant/inventory"
               className="px-3 py-1.5 rounded-lg text-[#8080a8] hover:text-white hover:bg-white/[0.04] transition-all"
             >
-              Inventory Management
+              Inventory
             </Link>
           </nav>
         </div>

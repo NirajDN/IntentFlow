@@ -7,6 +7,8 @@ import {
   clearStoredSession,
   getStoredToken,
   getStoredUser,
+  isActiveOrderStatus,
+  selectBuyerHomeOrder,
 } from "../lib/api";
 
 const API_URL =
@@ -53,6 +55,7 @@ type IntentResponse = {
     maxPrice?: number;
     minPrice?: number;
     inStockOnly?: boolean;
+    source?: "gemini" | "fallback";
   };
   results: {
     items: SearchResult[];
@@ -60,7 +63,6 @@ type IntentResponse = {
     semanticEnabled: boolean;
   };
 };
-
 type CartItem = {
   id: string;
   cartId: string;
@@ -75,6 +77,13 @@ type Cart = {
   items: CartItem[];
   totalAmount: number;
   totalItems: number;
+};
+
+type OrderItem = {
+  id: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
 };
 
 type Order = {
@@ -94,6 +103,7 @@ type Order = {
   razorpayOrderId: string | null;
   createdAt: string;
   updatedAt: string;
+  items: OrderItem[];
 };
 
 type CheckoutResponse = {
@@ -105,87 +115,6 @@ type CheckoutResponse = {
     orderAmount: number;
   };
 };
-
-type PaymentResponse = {
-  orderId: string;
-  orderStatus: string;
-  paymentId: string;
-  razorpayOrderId: string;
-  amount: number;
-  currency: string;
-};
-
-type VerifyPaymentResponse = {
-  order: Order;
-  payment: {
-    id: string;
-    status: string;
-    razorpayOrderId: string | null;
-    razorpayPaymentId: string | null;
-    razorpaySignature: string | null;
-  };
-  message: string;
-};
-
-type RazorpayOptions = {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  prefill?: {
-    name?: string;
-    email?: string;
-  };
-  theme?: {
-    color?: string;
-  };
-  handler: (response: {
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }) => void;
-  modal?: {
-    ondismiss?: () => void;
-  };
-};
-
-type RazorpayInstance = {
-  open: () => void;
-};
-
-type RazorpayConstructor = new (options: {
-  key: string;
-  amount: number;
-  currency: string;
-  name: string;
-  description: string;
-  order_id: string;
-  handler: (response: {
-    razorpay_order_id: string;
-    razorpay_payment_id: string;
-    razorpay_signature: string;
-  }) => void;
-  prefill?: {
-    name?: string;
-    email?: string;
-  };
-  theme?: {
-    color?: string;
-  };
-  modal?: {
-    ondismiss?: () => void;
-  };
-}) => {
-  open: () => void;
-};
-
-declare global {
-  interface Window {
-    Razorpay?: RazorpayConstructor;
-  }
-}
 
 const examples = [
   "wireless headphones under 5000",
@@ -221,6 +150,7 @@ useEffect(() => {
 
   if (getStoredToken()) {
     void loadCart();
+    void loadCurrentOrder();
   }
 
   const savedQuery = localStorage.getItem("intentflow_last_search");
@@ -241,9 +171,30 @@ useEffect(() => {
 
       if (response.success && response.data) {
         setCart(response.data);
+      } else if (!response.success) {
+        setError(response.error ?? "Failed to load cart.");
       }
     } catch {
-      // Cart loading failure should not prevent product search.
+      setError("Failed to load cart.");
+    }
+  }
+
+  async function loadCurrentOrder() {
+    if (!getStoredToken()) {
+      setCurrentOrder(null);
+      return;
+    }
+
+    try {
+      const response = await apiFetch<Order[]>("/api/orders");
+
+      if (!response.success || !response.data) {
+        return;
+      }
+
+      setCurrentOrder(selectBuyerHomeOrder(response.data) ?? null);
+    } catch {
+      // Search should still work if order lookup fails.
     }
   }
 
@@ -416,7 +367,6 @@ useEffect(() => {
 
     setCheckoutLoading(true);
     setCheckoutMessage("");
-    setPaymentMessage("");
     setError("");
 
     try {
@@ -429,33 +379,17 @@ useEffect(() => {
       );
 
       if (!response.success || !response.data) {
+        if (response.error?.includes("already have an active order")) {
+          window.location.href = "/checkout";
+          return;
+        }
+
         throw new Error(
           response.error ?? "Checkout failed"
         );
       }
 
-      const checkoutData = response.data;
-
-      setCurrentOrder(checkoutData.order);
-      setCartOpen(false);
-
-      if (
-        checkoutData.policy.decision === "REQUIRES_APPROVAL"
-      ) {
-        setCheckoutMessage(
-          `Order created. Merchant approval is required because the order amount of ₹${checkoutData.policy.orderAmount.toLocaleString(
-            "en-IN"
-          )} exceeds the autonomous spend limit of ₹${checkoutData.policy.spendLimit.toLocaleString(
-            "en-IN"
-          )}.`
-        );
-      } else {
-        setCheckoutMessage(
-          "Order approved automatically. You can proceed to payment."
-        );
-      }
-
-      await loadCart();
+      window.location.href = "/checkout";
     } catch (err) {
       setError(
         err instanceof Error
@@ -491,6 +425,13 @@ useEffect(() => {
         );
       }
 
+      if (response.data.status === "CANCELLED") {
+        setCheckoutMessage(
+          response.data.policyReason ??
+            "The merchant rejected this order."
+        );
+      }
+
       if (response.data.status === "PAID") {
         setCheckoutMessage(
           "Payment completed successfully. Your order is paid."
@@ -505,149 +446,9 @@ useEffect(() => {
     }
   }
 
-  async function startPayment() {
-    if (!currentOrder) {
-      setError("No order is selected for payment.");
-      return;
-    }
-
-    if (currentOrder.status !== "APPROVED") {
-      setError(
-        `Order is not ready for payment. Current status: ${currentOrder.status}`
-      );
-      return;
-    }
-
-    setPaymentLoading(true);
-    setPaymentMessage("");
-    setError("");
-
-    try {
-      const response = await apiFetch<PaymentResponse>(
-        `/api/orders/${currentOrder.id}/payment`,
-        {
-          method: "POST",
-          body: JSON.stringify({}),
-        }
-      );
-
-      if (!response.success || !response.data) {
-        throw new Error(
-          response.error ?? "Failed to create payment"
-        );
-      }
-
-      const payment = response.data;
-
-      if (!window.Razorpay) {
-        throw new Error(
-          "Razorpay Checkout has not loaded yet. Please refresh the page and try again."
-        );
-      }
-
-      const razorpayKey =
-        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-
-      if (!razorpayKey) {
-        throw new Error(
-          "NEXT_PUBLIC_RAZORPAY_KEY_ID is not configured in the web app."
-        );
-      }
-
-      const options: RazorpayOptions = {
-        key: razorpayKey,
-        amount: payment.amount,
-        currency: payment.currency,
-        name: "IntentFlow",
-        description: "IntentFlow commerce order",
-        order_id: payment.razorpayOrderId,
-        prefill: {
-          name: user?.name ?? undefined,
-          email: user?.email ?? undefined,
-        },
-        theme: {
-          color: "#7c3aed",
-        },
-        handler: (razorpayResponse) => {
-          void verifyPayment(
-            currentOrder.id,
-            razorpayResponse
-          );
-        },
-        modal: {
-          ondismiss: () => {
-            setPaymentLoading(false);
-            setPaymentMessage(
-              "Payment window closed. Your order is still awaiting payment."
-            );
-          },
-        },
-      };
-
-      const razorpayCheckout = new window.Razorpay(
-        options
-      );
-
-      razorpayCheckout.open();
-    } catch (err) {
-      setPaymentLoading(false);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to start payment."
-      );
-    }
-  }
-
-  async function verifyPayment(
-    orderId: string,
-    razorpayResponse: {
-      razorpay_order_id: string;
-      razorpay_payment_id: string;
-      razorpay_signature: string;
-    }
-  ) {
-    setPaymentLoading(true);
-    setPaymentMessage("");
-    setError("");
-
-    try {
-      const response =
-        await apiFetch<VerifyPaymentResponse>(
-          `/api/orders/${orderId}/payment/verify`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              razorpay_order_id:
-                razorpayResponse.razorpay_order_id,
-              razorpay_payment_id:
-                razorpayResponse.razorpay_payment_id,
-              razorpay_signature:
-                razorpayResponse.razorpay_signature,
-            }),
-          }
-        );
-
-      if (!response.success || !response.data) {
-        throw new Error(
-          response.error ?? "Payment verification failed"
-        );
-      }
-
-      setCurrentOrder(response.data.order);
-
-      setPaymentMessage(
-        "Payment successful and verified. Your order is now PAID."
-      );
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Payment verification failed."
-      );
-    } finally {
-      setPaymentLoading(false);
-    }
+  function startPayment() {
+    if (!currentOrder) return;
+    window.location.href = "/checkout";
   }
 
   function handleSubmit(
@@ -725,10 +526,27 @@ useEffect(() => {
             Merchant
           </a>
 
+          {currentOrder && isActiveOrderStatus(currentOrder.status) && (
+            <a
+              href="/checkout"
+              className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-2 text-sm text-violet-300"
+            >
+              Checkout
+            </a>
+          )}
+
           {user && (
-            <button
-              type="button"
-              onClick={() => setCartOpen(true)}
+            <a
+              href={user.role === "MERCHANT" ? "/merchant/orders" : "/orders"}
+              className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:border-violet-500/40 hover:text-white"
+            >
+              Orders
+            </a>
+          )}
+
+          {user && (
+            <a
+              href="/cart"
               className="relative rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:border-violet-500/40 hover:text-white"
             >
               Cart
@@ -737,6 +555,16 @@ useEffect(() => {
                   {cartCount}
                 </span>
               )}
+            </a>
+          )}
+
+          {user && (
+            <button
+              type="button"
+              onClick={() => setCartOpen(true)}
+              className="hidden rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:border-violet-500/40 hover:text-white sm:block"
+            >
+              Quick cart
             </button>
           )}
 
@@ -855,12 +683,28 @@ useEffect(() => {
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/30">
-                  Current order
+                  Existing order
                 </p>
 
                 <p className="mt-1 font-mono text-xs text-white/40">
                   {currentOrder.id}
                 </p>
+
+                {currentOrder.items.length > 0 && (
+                  <ul className="mt-2 space-y-0.5">
+                    {currentOrder.items.map((item) => (
+                      <li key={item.id} className="text-sm text-white/70">
+                        {item.productName}
+                        {item.quantity > 1 && (
+                          <span className="text-white/40"> × {item.quantity}</span>
+                        )}
+                        <span className="ml-2 text-white/40">
+                          ₹{(item.unitPrice * item.quantity).toLocaleString("en-IN")}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
 
                 <p className="mt-3 text-2xl font-black">
                   ₹
@@ -989,10 +833,15 @@ useEffect(() => {
               </div>
 
               <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-                {data.results.semanticEnabled
-                  ? "Semantic search"
-                  : "Catalog search"}
-              </span>
+  {data.intent.source === "fallback"
+    ? data.results.semanticEnabled
+      ? "Local fallback · Semantic search"
+      : "Local fallback · Catalog search"
+    : data.results.semanticEnabled
+      ? "Gemini intent · Semantic search"
+      : "Gemini intent · Catalog search"}
+</span>
+
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -1304,7 +1153,7 @@ useEffect(() => {
               <div className="border-t border-white/[0.06] p-6">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-white/50">
-                    Total
+                    Cart total
                   </span>
 
                   <span className="text-2xl font-black">
@@ -1315,16 +1164,30 @@ useEffect(() => {
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => void checkout()}
-                  disabled={checkoutLoading}
-                  className="btn-primary mt-5 w-full min-h-12"
-                >
-                  {checkoutLoading
-                    ? "Creating order..."
-                    : "Checkout"}
-                </button>
+                {currentOrder && isActiveOrderStatus(currentOrder.status) ? (
+                  <>
+                    <p className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                      You have an active order ({currentOrder.status.replaceAll("_", " ")}). Complete it before starting a new checkout.
+                    </p>
+                    <a
+                      href="/checkout"
+                      className="btn-primary mt-3 flex w-full min-h-12 items-center justify-center"
+                    >
+                      Continue existing order
+                    </a>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void checkout()}
+                    disabled={checkoutLoading}
+                    className="btn-primary mt-5 w-full min-h-12"
+                  >
+                    {checkoutLoading
+                      ? "Creating order..."
+                      : "Checkout"}
+                  </button>
+                )}
 
                 <p className="mt-3 text-center text-[11px] leading-relaxed text-white/30">
                   IntentFlow will evaluate the order against

@@ -6,6 +6,8 @@ import {
   apiFetch,
   clearStoredSession,
   getStoredUser,
+  isActiveOrderStatus,
+  selectActiveBuyerOrder,
 } from "../../lib/api";
 
 type CartProduct = {
@@ -52,8 +54,15 @@ type CheckoutResponse = {
   };
 };
 
+type ActiveOrder = {
+  id: string;
+  status: string;
+  totalAmount: number;
+  items?: { id: string; productName: string; quantity: number; unitPrice: number }[];
+};
+
 export default function CartPage() {
-  const [user, setUser] = useState(getStoredUser());
+  const [user, setUser] = useState<ReturnType<typeof getStoredUser>>(null);
   const [cart, setCart] = useState<Cart | null>(null);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -61,8 +70,7 @@ export default function CartPage() {
   const [removingItemId, setRemovingItemId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [checkoutResult, setCheckoutResult] =
-    useState<CheckoutResponse | null>(null);
+  const [activeOrder, setActiveOrder] = useState<ActiveOrder | null>(null);
 
   useEffect(() => {
     const storedUser = getStoredUser();
@@ -74,7 +82,23 @@ export default function CartPage() {
     }
 
     void loadCart();
+    void loadActiveOrder();
   }, []);
+
+  async function loadActiveOrder() {
+    try {
+      const response = await apiFetch<ActiveOrder[]>("/api/orders");
+
+      if (!response.success) {
+        return;
+      }
+
+      const next = selectActiveBuyerOrder(response.data ?? []);
+      setActiveOrder(next ?? null);
+    } catch {
+      // Cart page should still work if order lookup fails.
+    }
+  }
 
   async function loadCart() {
     setLoading(true);
@@ -88,11 +112,12 @@ export default function CartPage() {
       }
 
       if (!response.data) {
-  throw new Error("Cart data was not returned");
-}
+        throw new Error("Cart data was not returned");
+      }
 
-setCart(response.data);
+      setCart(response.data);
     } catch (err) {
+      setCart(null);
       setError(
         err instanceof Error
           ? err.message
@@ -201,10 +226,21 @@ setCart(response.data);
   }
 
   async function checkout() {
+    if (!cart || cart.items.length === 0) {
+      setError("Your cart is empty.");
+      return;
+    }
+
+    if (activeOrder && isActiveOrderStatus(activeOrder.status)) {
+  setError(
+    `You already have an active order (${activeOrder.status}). Complete it before starting a new checkout.`
+  );
+  return;
+}
+
     setCheckoutLoading(true);
     setError("");
     setMessage("");
-    setCheckoutResult(null);
 
     try {
       const response = await apiFetch<CheckoutResponse>(
@@ -216,39 +252,21 @@ setCart(response.data);
       );
 
       if (!response.success) {
+        if (response.error?.includes("already have an active order")) {
+          window.location.href = "/checkout";
+          return;
+        }
+
         throw new Error(
           response.error ?? "Checkout failed"
         );
       }
 
       if (!response.data) {
-  throw new Error("Checkout data was not returned");
-}
-
-const checkoutData = response.data;
-
-setCheckoutResult(checkoutData);
-
-setCart({
-  id: null,
-  userId: user?.id ?? "",
-  items: [],
-  totalAmount: 0,
-  totalItems: 0,
-});
-
-if (
-  checkoutData.policy.decision ===
-  "REQUIRES_APPROVAL"
-) {
-        setMessage(
-          "Order created. Merchant approval is required before payment."
-        );
-      } else {
-        setMessage(
-          "Order approved and ready for payment."
-        );
+        throw new Error("Checkout data was not returned");
       }
+
+      window.location.href = "/checkout";
     } catch (err) {
       setError(
         err instanceof Error
@@ -365,6 +383,22 @@ if (
           </a>
 
           <a
+            href={user?.role === "MERCHANT" ? "/merchant/orders" : "/orders"}
+            className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:border-violet-500/40 hover:text-white"
+          >
+            Orders
+          </a>
+
+          {activeOrder && (
+            <a
+              href="/checkout"
+              className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-2 text-sm text-violet-300"
+            >
+              Checkout
+            </a>
+          )}
+
+          <a
             href="/merchant"
             className="hidden rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm text-white/70 transition hover:border-violet-500/40 hover:text-white sm:block"
           >
@@ -424,6 +458,24 @@ if (
               Loading your cart...
             </p>
           </div>
+        ) : error && !cart ? (
+          <div className="glass rounded-2xl p-12 text-center">
+            <h2 className="text-2xl font-bold">
+              Could not load your cart
+            </h2>
+
+            <p className="mx-auto mt-2 max-w-md text-sm text-white/40">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => void loadCart()}
+              className="btn-primary mt-7 inline-flex px-8 py-3"
+            >
+              Retry
+            </button>
+          </div>
         ) : !cart || cart.items.length === 0 ? (
           <div className="glass rounded-2xl p-12 text-center">
             <div className="text-5xl">🛒</div>
@@ -437,9 +489,20 @@ if (
               add it to your cart.
             </p>
 
+            {activeOrder && (
+              <a
+                href="/checkout"
+                className="btn-primary mt-7 inline-flex px-8 py-3"
+              >
+                Return to current order
+              </a>
+            )}
+
             <a
               href="/"
-              className="btn-primary mt-7 inline-flex px-8 py-3"
+              className={`${
+                activeOrder ? "mt-4" : "mt-7"
+              } inline-flex rounded-xl border border-white/10 px-8 py-3 text-sm text-white/70 hover:text-white`}
             >
               Continue shopping
             </a>
@@ -562,10 +625,54 @@ if (
               </button>
             </div>
 
-            <aside className="h-fit lg:sticky lg:top-6">
+            <aside className="h-fit lg:sticky lg:top-6 space-y-4">
+              {/* ── Active order banner ───────────────────────────── */}
+              {activeOrder && isActiveOrderStatus(activeOrder.status) && (
+                <div className="glass rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] p-5">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-amber-400">
+                    Existing order
+                  </p>
+
+                  {activeOrder.items && activeOrder.items.length > 0 && (
+                    <ul className="mt-2 space-y-0.5">
+                      {activeOrder.items.map((item) => (
+                        <li key={item.id} className="text-sm text-white/70">
+                          {item.productName}
+                          {item.quantity > 1 && (
+                            <span className="text-white/40"> × {item.quantity}</span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  <p className="mt-2 text-xl font-black">
+                    ₹{activeOrder.totalAmount.toLocaleString("en-IN")}
+                  </p>
+
+                  <span className="mt-1 inline-block rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300">
+                    {activeOrder.status.replaceAll("_", " ")}
+                  </span>
+
+                  <p className="mt-3 text-xs text-amber-200/60">
+                    You have an active order pending payment. Complete it before starting a new checkout.
+                  </p>
+
+                  <a
+                    href="/checkout"
+                    className="btn-primary mt-4 flex w-full items-center justify-center py-3 text-sm"
+                  >
+                    Continue existing payment
+                  </a>
+                </div>
+              )}
+
+              {/* ── Cart summary ──────────────────────────────────── */}
               <div className="glass rounded-2xl p-6">
                 <p className="text-xs font-semibold uppercase tracking-widest text-white/30">
-                  Order summary
+                  {activeOrder && isActiveOrderStatus(activeOrder.status)
+                    ? "Current cart"
+                    : "Order summary"}
                 </p>
 
                 <div className="mt-5 flex items-center justify-between text-sm text-white/50">
@@ -603,16 +710,22 @@ if (
                   </span>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => void checkout()}
-                  disabled={checkoutLoading}
-                  className="btn-primary mt-6 w-full py-3 disabled:opacity-50"
-                >
-                  {checkoutLoading
-                    ? "Processing..."
-                    : "Proceed to Checkout"}
-                </button>
+                {activeOrder && isActiveOrderStatus(activeOrder.status) ? (
+                  <p className="mt-6 text-center text-xs text-white/30">
+                    Complete the existing order above before checking out this cart.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void checkout()}
+                    disabled={checkoutLoading || cart.items.length === 0}
+                    className="btn-primary mt-6 w-full py-3 disabled:opacity-50"
+                  >
+                    {checkoutLoading
+                      ? "Processing..."
+                      : "Proceed to Checkout"}
+                  </button>
+                )}
 
                 <p className="mt-4 text-center text-xs leading-relaxed text-white/30">
                   IntentFlow will evaluate the order
@@ -620,60 +733,6 @@ if (
                   before payment.
                 </p>
               </div>
-
-              {checkoutResult && (
-                <div className="mt-5 rounded-2xl border border-violet-500/20 bg-violet-500/[0.06] p-5">
-                  <p className="text-xs font-semibold uppercase tracking-widest text-violet-400">
-                    Order created
-                  </p>
-
-                  <p className="mt-3 text-sm text-white/70">
-                    Order ID
-                  </p>
-
-                  <p className="mt-1 break-all font-mono text-xs text-white/40">
-                    {checkoutResult.order.id}
-                  </p>
-
-                  <div className="mt-4 rounded-xl bg-white/[0.04] p-4">
-                    <p className="text-xs text-white/40">
-                      Policy decision
-                    </p>
-
-                    <p className="mt-1 font-semibold text-violet-300">
-                      {checkoutResult.policy.decision}
-                    </p>
-
-                    <p className="mt-2 text-xs leading-relaxed text-white/40">
-                      {checkoutResult.policy.reason}
-                    </p>
-                  </div>
-
-                  {checkoutResult.policy.decision ===
-                    "REQUIRES_APPROVAL" && (
-                    <div className="mt-4 rounded-xl border border-amber-500/20 bg-amber-500/10 p-4">
-                      <p className="text-sm font-semibold text-amber-300">
-                        Approval required
-                      </p>
-
-                      <p className="mt-1 text-xs leading-relaxed text-amber-200/60">
-                        A merchant must approve this order
-                        before payment can be created.
-                      </p>
-                    </div>
-                  )}
-
-                  {checkoutResult.policy.decision ===
-                    "AUTO_APPROVED" && (
-                    <a
-                      href={`/checkout?orderId=${checkoutResult.order.id}`}
-                      className="btn-primary mt-5 flex w-full justify-center py-3"
-                    >
-                      Continue to Payment
-                    </a>
-                  )}
-                </div>
-              )}
             </aside>
           </div>
         )}

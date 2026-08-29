@@ -2,7 +2,10 @@ import crypto from "node:crypto";
 import { Router, Response } from "express";
 import prisma from "@intentflow/database";
 import { apiError, apiSuccess } from "@intentflow/shared";
-import { razorpay } from "../services/razorpayService.js";
+import {
+  getRazorpayKeyId,
+  razorpay,
+} from "../services/razorpayService.js";
 import {
   authenticateUser,
   requireRole,
@@ -20,6 +23,22 @@ const router = Router();
  * - total <= autonomous spend limit -> AUTO_APPROVED
  * - total > autonomous spend limit  -> REQUIRES_APPROVAL
  */
+const ACTIVE_ORDER_STATUSES = [
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "PAYMENT_PENDING",
+] as const;
+
+class CheckoutConflictError extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode: number) {
+    super(message);
+    this.name = "CheckoutConflictError";
+    this.statusCode = statusCode;
+  }
+}
+
 router.post(
   "/checkout",
   authenticateUser,
@@ -27,183 +46,216 @@ router.post(
     try {
       const userId = req.user!.id;
 
-      const cart = await prisma.cart.findUnique({
-        where: {
-          userId,
-        },
-        include: {
-          items: {
-            include: {
-              product: {
-                include: {
-                  inventory: true,
-                  merchant: {
-                    include: {
-                      policy: true,
+      const result = await prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`
+          SELECT id FROM carts WHERE "userId" = ${userId} FOR UPDATE
+        `;
+
+        const activeOrder = await tx.order.findFirst({
+          where: {
+            userId,
+            status: {
+              in: [...ACTIVE_ORDER_STATUSES],
+            },
+          },
+          select: {
+            id: true,
+            status: true,
+          },
+        });
+
+        if (activeOrder) {
+          throw new CheckoutConflictError(
+            `You already have an active order (${activeOrder.status}). Complete it before creating a new one.`,
+            409
+          );
+        }
+
+        const cart = await tx.cart.findUnique({
+          where: {
+            userId,
+          },
+          include: {
+            items: {
+              include: {
+                product: {
+                  include: {
+                    inventory: true,
+                    merchant: {
+                      include: {
+                        policy: true,
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
-      });
+        });
 
-      if (!cart || cart.items.length === 0) {
-        return res.status(400).json(apiError("Cart is empty"));
-      }
-
-      // Validate cart items.
-      for (const item of cart.items) {
-        if (!item.product.isActive) {
-          return res.status(409).json(
-            apiError(
-              `Product "${item.product.name}" is no longer available`
-            )
-          );
+        if (!cart || cart.items.length === 0) {
+          throw new CheckoutConflictError("Cart is empty", 400);
         }
 
-        if (!item.product.inventory) {
-          return res.status(409).json(
-            apiError(
-              `Product "${item.product.name}" has no inventory record`
-            )
-          );
+        // Lock all inventory rows for products in this cart to
+        // prevent concurrent checkouts from overselling the same stock.
+        const productIds = cart.items.map((i) => i.productId);
+        if (productIds.length > 0) {
+          await tx.$queryRaw`
+            SELECT id FROM inventories
+            WHERE "productId" = ANY(${productIds}::text[])
+            FOR UPDATE
+          `;
         }
 
-        if (
-          item.product.inventory.availableQuantity <
-          item.quantity
-        ) {
-          return res.status(409).json(
-            apiError(
-              `Only ${item.product.inventory.availableQuantity} unit(s) available for "${item.product.name}"`
-            )
-          );
+        for (const item of cart.items) {
+          if (!item.product.isActive) {
+            throw new CheckoutConflictError(
+              `Product "${item.product.name}" is no longer available`,
+              409
+            );
+          }
+
+          if (!item.product.inventory) {
+            throw new CheckoutConflictError(
+              `Product "${item.product.name}" has no inventory record`,
+              409
+            );
+          }
+
+          if (
+            item.product.inventory.availableQuantity <
+            item.quantity
+          ) {
+            throw new CheckoutConflictError(
+              `Only ${item.product.inventory.availableQuantity} unit(s) available for "${item.product.name}"`,
+              409
+            );
+          }
+
+          if (!item.product.merchant.policy) {
+            throw new CheckoutConflictError(
+              `Merchant policy is not configured for "${item.product.name}"`,
+              409
+            );
+          }
         }
 
-        if (!item.product.merchant.policy) {
-          return res.status(409).json(
-            apiError(
-              `Merchant policy is not configured for "${item.product.name}"`
-            )
-          );
-        }
-      }
+        const totalAmount = cart.items.reduce(
+          (total, item) =>
+            total + item.product.price * item.quantity,
+          0
+        );
 
-      // Calculate the order total from current product prices.
-      const totalAmount = cart.items.reduce(
-        (total, item) =>
-          total + item.product.price * item.quantity,
-        0
-      );
+        const policies = cart.items.map(
+          (item) => item.product.merchant.policy!
+        );
 
-      /*
-       * For multiple merchants, use the strictest
-       * autonomous spend limit.
-       */
-      const policies = cart.items.map(
-        (item) => item.product.merchant.policy!
-      );
+        const spendLimit = Math.min(
+          ...policies.map(
+            (policy) =>
+              policy.defaultAutonomousSpendLimit
+          )
+        );
 
-      const spendLimit = Math.min(
-        ...policies.map(
-          (policy) =>
-            policy.defaultAutonomousSpendLimit
-        )
-      );
+        const policyDecision =
+          totalAmount <= spendLimit
+            ? "AUTO_APPROVED"
+            : "REQUIRES_APPROVAL";
 
-      const policyDecision =
-        totalAmount <= spendLimit
-          ? "AUTO_APPROVED"
-          : "REQUIRES_APPROVAL";
+        const policyReason =
+          policyDecision === "AUTO_APPROVED"
+            ? `Order total ₹${totalAmount.toFixed(
+              2
+            )} is within the autonomous spend limit of ₹${spendLimit.toFixed(
+              2
+            )}.`
+            : `Order total ₹${totalAmount.toFixed(
+              2
+            )} exceeds the autonomous spend limit of ₹${spendLimit.toFixed(
+              2
+            )}. Approval is required before payment.`;
 
-      const policyReason =
-        policyDecision === "AUTO_APPROVED"
-          ? `Order total ₹${totalAmount.toFixed(
-            2
-          )} is within the autonomous spend limit of ₹${spendLimit.toFixed(
-            2
-          )}.`
-          : `Order total ₹${totalAmount.toFixed(
-            2
-          )} exceeds the autonomous spend limit of ₹${spendLimit.toFixed(
-            2
-          )}. Approval is required before payment.`;
+        const orderStatus =
+          policyDecision === "AUTO_APPROVED"
+            ? "APPROVED"
+            : "PENDING_APPROVAL";
 
-      const orderStatus =
-        policyDecision === "AUTO_APPROVED"
-          ? "APPROVED"
-          : "PENDING_APPROVAL";
+        const createdOrder = await tx.order.create({
+          data: {
+            userId,
+            totalAmount,
+            currency:
+              cart.items[0]!.product.currency,
+            status: orderStatus,
+            policyDecision,
+            policyReason,
 
-      /*
-       * Create Order, OrderItems and PolicyAudit
-       * atomically.
-       */
-      const order = await prisma.$transaction(
-        async (tx) => {
-          const createdOrder = await tx.order.create({
-            data: {
-              userId,
-              totalAmount,
-              currency:
-                cart.items[0]!.product.currency,
-              status: orderStatus,
-              policyDecision,
-              policyReason,
+            items: {
+              create: cart.items.map((item) => ({
+                productId: item.productId,
+                productName: item.product.name,
+                quantity: item.quantity,
+                unitPrice: item.product.price,
+              })),
+            },
 
-              items: {
-                create: cart.items.map((item) => ({
-                  productId: item.productId,
-                  productName: item.product.name,
-                  quantity: item.quantity,
-                  unitPrice: item.product.price,
-                })),
-              },
-
-              policyAudits: {
-                create: {
-                  decision: policyDecision,
-                  reason: policyReason,
-                  spendLimit,
-                  orderAmount: totalAmount,
-                  metadata: {
-                    cartId: cart.id,
-                    itemCount: cart.items.length,
-                  },
+            policyAudits: {
+              create: {
+                decision: policyDecision,
+                reason: policyReason,
+                spendLimit,
+                orderAmount: totalAmount,
+                metadata: {
+                  cartId: cart.id,
+                  itemCount: cart.items.length,
                 },
               },
             },
+          },
 
-            include: {
-              items: true,
-              policyAudits: true,
+          include: {
+            items: true,
+            policyAudits: true,
+          },
+        });
+
+        await tx.cartItem.deleteMany({
+          where: {
+            cartId: cart.id,
+          },
+        });
+
+        // Decrement availableQuantity and increment reservedQuantity
+        // for each ordered product inside the same locked transaction.
+        // This prevents concurrent checkouts from overselling stock.
+        for (const item of cart.items) {
+          await tx.inventory.update({
+            where: { productId: item.productId },
+            data: {
+              availableQuantity: { decrement: item.quantity },
+              reservedQuantity:  { increment: item.quantity },
             },
           });
-
-          // Clear cart after successful order creation.
-          await tx.cartItem.deleteMany({
-            where: {
-              cartId: cart.id,
-            },
-          });
-
-          return createdOrder;
         }
-      );
 
-      return res.status(201).json(
-        apiSuccess({
-          order,
+        return {
+          order: createdOrder,
           policy: {
             decision: policyDecision,
             reason: policyReason,
             spendLimit,
             orderAmount: totalAmount,
           },
-        })
-      );
+        };
+      });
+
+      return res.status(201).json(apiSuccess(result));
     } catch (err: unknown) {
+      if (err instanceof CheckoutConflictError) {
+        return res.status(err.statusCode).json(apiError(err.message));
+      }
+
       const message =
         err instanceof Error
           ? err.message
@@ -250,7 +302,26 @@ router.post(
         );
       }
 
-      if (order.status !== "APPROVED") {
+      // Block invalid terminal/non-payment-ready statuses upfront.
+      if (
+        order.status === "PENDING_APPROVAL" ||
+        order.status === "CANCELLED" ||
+        order.status === "FAILED"
+      ) {
+        return res.status(409).json(
+          apiError(
+            `Order is not ready for payment. Current status: ${order.status}`
+          )
+        );
+      }
+
+      if (order.status === "PAID") {
+        return res.status(409).json(
+          apiError("Order has already been paid")
+        );
+      }
+
+      if (order.status !== "APPROVED" && order.status !== "PAYMENT_PENDING") {
         return res.status(409).json(
           apiError(
             `Order is not ready for payment. Current status: ${order.status}`
@@ -259,70 +330,186 @@ router.post(
       }
 
       /*
-       * Prevent creating duplicate Razorpay orders.
+       * All state-changing work happens inside a single serialisable
+       * transaction so concurrent requests cannot both create a Razorpay
+       * order for the same IntentFlow order.
+       *
+       * Strategy:
+       * 1. Lock the order row with SELECT … FOR UPDATE.
+       * 2. Re-read the current status and payments inside the lock.
+       * 3. If already PAYMENT_PENDING → reuse existing Razorpay order.
+       * 4. If still APPROVED and no active payment → create Razorpay
+       *    order (outside the lock but guarded by step 2) then persist.
+       *
+       * Because Razorpay order creation is a remote call it cannot sit
+       * inside the DB transaction.  We therefore:
+       *  a. Acquire the lock and read state.
+       *  b. Release the lock, call Razorpay if needed.
+       *  c. Re-acquire the lock and write only if state hasn't changed.
        */
-      const existingPayment = order.payments.find(
-        (payment) =>
-          payment.status === "CREATED" ||
-          payment.status === "PENDING"
-      );
 
-      if (existingPayment?.razorpayOrderId) {
+      // ── Step A: read locked state ────────────────────────────────────
+      type LockedState = {
+        status: string;
+        totalAmount: number;
+        currency: string;
+        activePayment: {
+          id: string;
+          razorpayOrderId: string | null;
+          status: string;
+        } | null;
+      };
+
+      const lockedState = await prisma.$transaction(async (tx) => {
+        // Lock the order row.
+        await tx.$queryRaw`
+          SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE
+        `;
+
+        const locked = await tx.order.findFirst({
+          where: { id: orderId, userId: req.user!.id },
+          include: { payments: true },
+        });
+
+        if (!locked) throw new Error("Order not found inside transaction");
+
+        const active = locked.payments.find(
+          (p) => p.status === "CREATED" || p.status === "PENDING"
+        ) ?? null;
+
+        return {
+          status: locked.status,
+          totalAmount: locked.totalAmount,
+          currency: locked.currency,
+          activePayment: active
+            ? { id: active.id, razorpayOrderId: active.razorpayOrderId, status: active.status }
+            : null,
+        } satisfies LockedState;
+      });
+
+      // ── Fast-path: PAYMENT_PENDING already has a Razorpay order ─────
+      if (lockedState.status === "PAYMENT_PENDING") {
+        if (!lockedState.activePayment?.razorpayOrderId) {
+          return res.status(409).json(
+            apiError(
+              "Payment is pending, but no active Razorpay order was found"
+            )
+          );
+        }
+
         return res.status(200).json(
           apiSuccess({
-            orderId: order.id,
-            orderStatus: order.status,
-            paymentId: existingPayment.id,
-            razorpayOrderId: existingPayment.razorpayOrderId,
-            amount: Math.round(order.totalAmount * 100),
-            currency: order.currency,
+            orderId,
+            orderStatus: lockedState.status,
+            paymentId: lockedState.activePayment.id,
+            razorpayOrderId: lockedState.activePayment.razorpayOrderId,
+            amount: Math.round(lockedState.totalAmount * 100),
+            currency: lockedState.currency,
           })
         );
       }
 
+      // ── Fast-path: APPROVED but already has an active payment record ─
+      if (lockedState.activePayment?.razorpayOrderId) {
+        return res.status(200).json(
+          apiSuccess({
+            orderId,
+            orderStatus: lockedState.status,
+            paymentId: lockedState.activePayment.id,
+            razorpayOrderId: lockedState.activePayment.razorpayOrderId,
+            amount: Math.round(lockedState.totalAmount * 100),
+            currency: lockedState.currency,
+          })
+        );
+      }
+
+      if (lockedState.status !== "APPROVED") {
+        return res.status(409).json(
+          apiError(
+            `Order is not ready for payment. Current status: ${lockedState.status}`
+          )
+        );
+      }
+
+      // ── Step B: create Razorpay order (remote call, outside TX) ─────
       /*
        * Razorpay expects amount in the smallest currency unit.
-       *
        * ₹29,999 -> 2999900 paise
        */
       const razorpayOrder = await razorpay.orders.create({
-        amount: Math.round(order.totalAmount * 100),
-        currency: order.currency,
-        receipt: `intentflow_${order.id}`,
+        amount: Math.round(lockedState.totalAmount * 100),
+        currency: lockedState.currency,
+        receipt: `intentflow_${orderId}`,
         notes: {
-          intentflowOrderId: order.id,
-          userId: order.userId,
+          intentflowOrderId: orderId,
+          userId: req.user!.id,
         },
       });
 
-      const result = await prisma.$transaction(
-        async (tx) => {
-          const payment = await tx.payment.create({
-            data: {
-              orderId: order.id,
-              amount: order.totalAmount,
-              currency: order.currency,
-              status: "CREATED",
-              razorpayOrderId: razorpayOrder.id,
-            },
-          });
+      // ── Step C: persist atomically, guard against concurrent writes ──
+      const result = await prisma.$transaction(async (tx) => {
+        // Re-lock and re-read to ensure state hasn't changed since step A.
+        await tx.$queryRaw`
+          SELECT id FROM orders WHERE id = ${orderId} FOR UPDATE
+        `;
 
-          const updatedOrder = await tx.order.update({
-            where: {
-              id: order.id,
-            },
-            data: {
-              status: "PAYMENT_PENDING",
-              razorpayOrderId: razorpayOrder.id,
-            },
-          });
+        const currentOrder = await tx.order.findFirst({
+          where: { id: orderId, userId: req.user!.id },
+          include: { payments: true },
+        });
 
-          return {
-            payment,
-            order: updatedOrder,
-          };
+        if (!currentOrder) {
+          throw new Error("Order is no longer available for payment");
         }
-      );
+
+        // Another request already moved this order to PAYMENT_PENDING.
+        if (currentOrder.status === "PAYMENT_PENDING") {
+          const existingActive = currentOrder.payments.find(
+            (p) => p.status === "CREATED" || p.status === "PENDING"
+          );
+
+          if (existingActive?.razorpayOrderId) {
+            return { payment: existingActive, order: currentOrder };
+          }
+        }
+
+        if (currentOrder.status !== "APPROVED") {
+          throw new Error(
+            `Order is no longer approved for payment. Current status: ${currentOrder.status}`
+          );
+        }
+
+        // Guard: another concurrent request may have just created a payment.
+        const alreadyActive = currentOrder.payments.find(
+          (p) =>
+            (p.status === "CREATED" || p.status === "PENDING") &&
+            p.razorpayOrderId
+        );
+
+        if (alreadyActive) {
+          return { payment: alreadyActive, order: currentOrder };
+        }
+
+        const payment = await tx.payment.create({
+          data: {
+            orderId: currentOrder.id,
+            amount: currentOrder.totalAmount,
+            currency: currentOrder.currency,
+            status: "CREATED",
+            razorpayOrderId: razorpayOrder.id,
+          },
+        });
+
+        const updatedOrder = await tx.order.update({
+          where: { id: currentOrder.id },
+          data: {
+            status: "PAYMENT_PENDING",
+            razorpayOrderId: razorpayOrder.id,
+          },
+        });
+
+        return { payment, order: updatedOrder };
+      });
 
       return res.status(201).json(
         apiSuccess({
@@ -330,8 +517,8 @@ router.post(
           orderStatus: result.order.status,
           paymentId: result.payment.id,
           razorpayOrderId: result.payment.razorpayOrderId,
-          amount: Math.round(order.totalAmount * 100),
-          currency: order.currency,
+          amount: Math.round(lockedState.totalAmount * 100),
+          currency: lockedState.currency,
         })
       );
     } catch (err: unknown) {
@@ -339,6 +526,14 @@ router.post(
         err instanceof Error
           ? err.message
           : "Failed to create Razorpay payment";
+
+      if (
+        message.includes("no longer approved") ||
+        message.includes("no longer available") ||
+        message.includes("no longer active")
+      ) {
+        return res.status(409).json(apiError(message));
+      }
 
       return res.status(500).json(
         apiError(message)
@@ -408,17 +603,52 @@ router.post(
         );
       }
 
+      if (order.razorpayOrderId !== razorpay_order_id) {
+        return res.status(400).json(
+          apiError("Razorpay order ID does not match this IntentFlow order")
+        );
+      }
+
+      const successfulPayment = order.payments.find(
+        (item) =>
+          item.status === "SUCCESS" &&
+          item.razorpayOrderId === razorpay_order_id &&
+          item.razorpayPaymentId === razorpay_payment_id
+      );
+
+      if (order.status === "PAID" && successfulPayment) {
+        const paidOrder = await prisma.order.findFirst({
+          where: {
+            id: order.id,
+            userId: req.user!.id,
+          },
+          include: {
+            items: true,
+            payments: true,
+            policyAudits: true,
+          },
+        });
+
+        return res.status(200).json(
+          apiSuccess({
+            order: paidOrder ?? order,
+            payment: successfulPayment,
+            message: "Payment already verified",
+          })
+        );
+      }
+
+      if (order.status === "PAID") {
+        return res.status(409).json(
+          apiError("Order has already been paid")
+        );
+      }
+
       if (order.status !== "PAYMENT_PENDING") {
         return res.status(409).json(
           apiError(
             `Order is not awaiting payment. Current status: ${order.status}`
           )
-        );
-      }
-
-      if (order.razorpayOrderId !== razorpay_order_id) {
-        return res.status(400).json(
-          apiError("Razorpay order ID does not match this IntentFlow order")
         );
       }
 
@@ -483,9 +713,70 @@ router.post(
 
       const result = await prisma.$transaction(
         async (tx) => {
+          // Lock the order row to prevent concurrent verify attempts.
+          await tx.$queryRaw`
+            SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE
+          `;
+
+          const currentOrder = await tx.order.findFirst({
+            where: {
+              id: order.id,
+              userId: req.user!.id,
+              status: "PAYMENT_PENDING",
+            },
+            include: {
+              payments: true,
+            },
+          });
+
+          if (!currentOrder) {
+            const paidOrder = await tx.order.findFirst({
+              where: {
+                id: order.id,
+                userId: req.user!.id,
+                status: "PAID",
+              },
+              include: {
+                items: true,
+                payments: true,
+                policyAudits: true,
+              },
+            });
+
+            const alreadyPaid = paidOrder?.payments.find(
+              (item) =>
+                item.status === "SUCCESS" &&
+                item.razorpayOrderId === razorpay_order_id &&
+                item.razorpayPaymentId === razorpay_payment_id
+            );
+
+            if (paidOrder && alreadyPaid) {
+              return {
+                payment: alreadyPaid,
+                order: paidOrder,
+              };
+            }
+
+            throw new Error(
+              "Order is no longer awaiting payment verification"
+            );
+          }
+
+          const currentPayment = currentOrder.payments.find(
+            (item) =>
+              item.id === payment.id &&
+              item.razorpayOrderId === razorpay_order_id &&
+              (item.status === "CREATED" ||
+                item.status === "PENDING")
+          );
+
+          if (!currentPayment) {
+            throw new Error("Payment record is no longer active");
+          }
+
           const updatedPayment = await tx.payment.update({
             where: {
-              id: payment.id,
+              id: currentPayment.id,
             },
             data: {
               status: "SUCCESS",
@@ -497,7 +788,7 @@ router.post(
 
           const updatedOrder = await tx.order.update({
             where: {
-              id: order.id,
+              id: currentOrder.id,
             },
             data: {
               status: "PAID",
@@ -508,6 +799,17 @@ router.post(
               policyAudits: true,
             },
           });
+
+          // Move reserved stock to sold stock for each ordered product.
+          for (const item of updatedOrder.items) {
+            await tx.inventory.updateMany({
+              where: { productId: item.productId },
+              data: {
+                reservedQuantity: { decrement: item.quantity },
+                soldQuantity:     { increment: item.quantity },
+              },
+            });
+          }
 
           return {
             payment: updatedPayment,
@@ -528,6 +830,13 @@ router.post(
         err instanceof Error
           ? err.message
           : "Failed to verify payment";
+
+      if (
+        message.includes("no longer awaiting payment") ||
+        message.includes("no longer active")
+      ) {
+        return res.status(409).json(apiError(message));
+      }
 
       return res.status(500).json(
         apiError(message)
@@ -594,7 +903,6 @@ router.get(
     }
   }
 );
-
 
 /**
  * GET /api/orders
@@ -637,62 +945,20 @@ router.get(
 );
 
 /**
- * GET /api/orders/merchant
+ * GET /api/orders/razorpay-key
  *
- * Returns orders containing products owned by the
- * authenticated merchant.
- *
- * Used by the merchant approval dashboard.
+ * Returns the public Razorpay key ID for checkout.
+ * Must be registered before /:orderId to avoid route shadowing.
  */
 router.get(
-  "/merchant",
+  "/razorpay-key",
   authenticateUser,
-  requireRole("MERCHANT"),
-  async (req: AuthenticatedRequest, res: Response) => {
-    try {
-      const orders = await prisma.order.findMany({
-        where: {
-          items: {
-            some: {
-              product: {
-                merchant: {
-                  ownerId: req.user!.id,
-                },
-              },
-            },
-          },
-        },
-        include: {
-          items: {
-            include: {
-              product: {
-                include: {
-                  merchant: true,
-                },
-              },
-            },
-          },
-          payments: true,
-          policyAudits: true,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-
-      return res.status(200).json(
-        apiSuccess(orders)
-      );
-    } catch (err: unknown) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch merchant orders";
-
-      return res.status(500).json(
-        apiError(message)
-      );
-    }
+  async (_req: AuthenticatedRequest, res: Response) => {
+    return res.status(200).json(
+      apiSuccess({
+        keyId: getRazorpayKeyId(),
+      })
+    );
   }
 );
 
@@ -796,6 +1062,24 @@ router.post(
 
       const updatedOrder = await prisma.$transaction(
         async (tx) => {
+          // Re-lock the order row so two simultaneous approvals
+          // cannot both pass and create duplicate audit records.
+          await tx.$queryRaw`
+            SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE
+          `;
+
+          const current = await tx.order.findFirst({
+            where: { id: order.id },
+            select: { status: true },
+          });
+
+          if (current?.status !== "PENDING_APPROVAL") {
+            throw new CheckoutConflictError(
+              `Order cannot be approved from status ${current?.status ?? "unknown"}`,
+              409
+            );
+          }
+
           const updated = await tx.order.update({
             where: {
               id: order.id,
@@ -835,6 +1119,10 @@ router.post(
         })
       );
     } catch (err: unknown) {
+      if (err instanceof CheckoutConflictError) {
+        return res.status(err.statusCode).json(apiError(err.message));
+      }
+
       const message =
         err instanceof Error
           ? err.message
@@ -910,6 +1198,23 @@ router.post(
 
       const updatedOrder = await prisma.$transaction(
         async (tx) => {
+          // Re-lock so two simultaneous reject calls cannot both proceed.
+          await tx.$queryRaw`
+            SELECT id FROM orders WHERE id = ${order.id} FOR UPDATE
+          `;
+
+          const current = await tx.order.findFirst({
+            where: { id: order.id },
+            include: { items: true },
+          });
+
+          if (current?.status !== "PENDING_APPROVAL") {
+            throw new CheckoutConflictError(
+              `Order cannot be rejected from status ${current?.status ?? "unknown"}`,
+              409
+            );
+          }
+
           const updated = await tx.order.update({
             where: {
               id: order.id,
@@ -939,6 +1244,18 @@ router.post(
             },
           });
 
+          // Return the reserved stock to available since the order
+          // was rejected before any payment was made.
+          for (const item of (current.items ?? [])) {
+            await tx.inventory.updateMany({
+              where: { productId: item.productId },
+              data: {
+                reservedQuantity: { decrement: item.quantity },
+                availableQuantity: { increment: item.quantity },
+              },
+            });
+          }
+
           return updated;
         }
       );
@@ -950,6 +1267,10 @@ router.post(
         })
       );
     } catch (err: unknown) {
+      if (err instanceof CheckoutConflictError) {
+        return res.status(err.statusCode).json(apiError(err.message));
+      }
+
       const message =
         err instanceof Error
           ? err.message

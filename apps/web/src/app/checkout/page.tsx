@@ -1,7 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { apiFetch, getStoredToken, getStoredUser } from "../../lib/api";
+import { apiFetch, getStoredUser, selectCheckoutOrder } from "../../lib/api";
+
+// Razorpay global type augmentation
+interface RazorpayResponse {
+  razorpay_order_id: string;
+  razorpay_payment_id: string;
+  razorpay_signature: string;
+}
+
+interface RazorpayOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  name: string;
+  description: string;
+  order_id: string;
+  prefill?: {
+    name?: string;
+    email?: string;
+  };
+  theme?: {
+    color: string;
+  };
+  handler: (response: RazorpayResponse) => void;
+  modal?: {
+    ondismiss?: () => void;
+  };
+}
+
+interface RazorpayInstance {
+  open: () => void;
+  close: () => void;
+}
+
+interface WindowWithRazorpay extends Window {
+  Razorpay: new (options: RazorpayOptions) => RazorpayInstance;
+}
 
 type Order = {
   id: string;
@@ -38,11 +74,8 @@ type PaymentResponse = {
   currency: string;
 };
 
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
-
 export default function CheckoutPage() {
-  const [user, setUser] = useState(getStoredUser());
+  const [user, setUser] = useState<ReturnType<typeof getStoredUser>>(null);
   const [order, setOrder] = useState<Order | null>(null);
   const [checkoutResult, setCheckoutResult] =
     useState<CheckoutResponse | null>(null);
@@ -65,9 +98,27 @@ export default function CheckoutPage() {
     void loadCartAndOrder();
   }, []);
 
-  async function loadCartAndOrder() {
-    setLoading(true);
-    setError("");
+  useEffect(() => {
+    if (order?.status !== "PENDING_APPROVAL") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void loadCartAndOrder({ silent: true });
+    }, 4000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [order?.id, order?.status]);
+
+  async function loadCartAndOrder(options?: { silent?: boolean }) {
+    const silent = options?.silent === true;
+
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
 
     try {
       const response = await apiFetch<Order[]>("/api/orders");
@@ -76,26 +127,40 @@ export default function CheckoutPage() {
         throw new Error(response.error ?? "Failed to load orders");
       }
 
-      const orders = response.data ?? [];
+      const nextOrder = selectCheckoutOrder(response.data ?? []);
 
-      const activeOrder = orders.find(
-        (item) =>
-          item.status === "PENDING_APPROVAL" ||
-          item.status === "APPROVED" ||
-          item.status === "PAYMENT_PENDING"
-      );
+      setOrder(nextOrder ?? null);
 
-      if (activeOrder) {
-        setOrder(activeOrder);
+      if (nextOrder?.status === "PAYMENT_PENDING" && nextOrder.razorpayOrderId) {
+        setPayment((current) =>
+          current ?? {
+            orderId: nextOrder.id,
+            orderStatus: nextOrder.status,
+            paymentId: "",
+            razorpayOrderId: nextOrder.razorpayOrderId as string,
+            amount: Math.round(nextOrder.totalAmount * 100),
+            currency: nextOrder.currency,
+          }
+        );
+      }
+
+      if (silent) {
+        setError("");
       }
     } catch (err) {
+      if (!silent) {
+        setOrder(null);
+      }
+
       setError(
         err instanceof Error
           ? err.message
           : "Failed to load checkout information."
       );
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -130,11 +195,16 @@ export default function CheckoutPage() {
         );
       }
     } catch (err) {
-      setError(
+      const message =
         err instanceof Error
           ? err.message
-          : "Failed to create order."
-      );
+          : "Failed to create order.";
+
+      setError(message);
+
+      if (message.includes("already have an active order")) {
+        await loadCartAndOrder();
+      }
     } finally {
       setCheckoutLoading(false);
     }
@@ -146,45 +216,56 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (order.status !== "APPROVED") {
-      setError(
-        `This order is not ready for payment. Current status: ${order.status}`
-      );
-      return;
-    }
+
+
+    if (
+  order.status !== "APPROVED" &&
+  order.status !== "PAYMENT_PENDING"
+) {
+  setError(
+    `This order is not ready for payment. Current status: ${order.status}`
+  );
+  return;
+}
 
     setPaymentLoading(true);
     setError("");
     setSuccess("");
 
     try {
-      const response =
-        await apiFetch<PaymentResponse>(
-          `/api/orders/${order.id}/payment`,
-          {
-            method: "POST",
-            body: JSON.stringify({}),
-          }
-        );
+      const response = await apiFetch<PaymentResponse>(
+        `/api/orders/${order.id}/payment`,
+        {
+          method: "POST",
+          body: JSON.stringify({}),
+        }
+      );
 
       if (!response.success || !response.data) {
         throw new Error(
-          response.error ?? "Failed to create payment"
+          response.error ?? "Failed to prepare payment"
         );
       }
 
       const paymentData = response.data;
       setPayment(paymentData);
-
-      const keyResponse = await fetch(
-        `${API_URL}/api/orders/razorpay-key`
+      setOrder((current) =>
+        current
+          ? {
+              ...current,
+              status: paymentData.orderStatus,
+              razorpayOrderId: paymentData.razorpayOrderId,
+            }
+          : current
       );
 
-      const keyJson = await keyResponse.json();
+      const keyResponse = await apiFetch<{ keyId: string }>(
+        "/api/orders/razorpay-key"
+      );
 
-      if (!keyResponse.ok || !keyJson.success || !keyJson.data?.keyId) {
+      if (!keyResponse.success || !keyResponse.data?.keyId) {
         throw new Error(
-          keyJson.error ?? "Failed to load Razorpay key"
+          keyResponse.error ?? "Failed to load Razorpay key"
         );
       }
 
@@ -192,8 +273,8 @@ export default function CheckoutPage() {
 
       const currentUser = getStoredUser();
 
-      const razorpay = new window.Razorpay!({
-        key: keyJson.data.keyId,
+      const razorpay = new (window as unknown as WindowWithRazorpay).Razorpay({
+        key: keyResponse.data.keyId,
         amount: paymentData.amount,
         currency: paymentData.currency,
         name: "IntentFlow",
@@ -283,7 +364,7 @@ export default function CheckoutPage() {
 
   function loadRazorpayScript(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (window.Razorpay) {
+      if ((window as unknown as WindowWithRazorpay).Razorpay) {
         resolve();
         return;
       }
@@ -386,6 +467,13 @@ export default function CheckoutPage() {
             className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white/70 hover:text-white"
           >
             Cart
+          </a>
+
+          <a
+            href={user?.role === "MERCHANT" ? "/merchant/orders" : "/orders"}
+            className="rounded-xl border border-white/10 px-4 py-2 text-sm text-white/70 hover:text-white"
+          >
+            Orders
           </a>
 
           <a
@@ -521,18 +609,77 @@ export default function CheckoutPage() {
             )}
 
             {order.status === "PENDING_APPROVAL" && (
-              <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-6">
-                <h2 className="font-bold text-amber-300">
-                  Approval required
-                </h2>
+  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.08] p-6">
+    <div className="flex items-start gap-4">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-xl">
+        ⏳
+      </div>
 
-                <p className="mt-2 text-sm text-amber-200/60">
-                  This order exceeds the autonomous spending
-                  limit. A merchant must approve it before
-                  payment can begin.
-                </p>
-              </div>
-            )}
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-3">
+          <h2 className="text-lg font-bold text-amber-300">
+            Merchant approval required
+          </h2>
+
+          <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-300">
+            Pending approval
+          </span>
+        </div>
+
+        <p className="mt-2 text-sm leading-relaxed text-amber-100/60">
+          This order exceeds your autonomous spending limit.
+          Payment will become available once the merchant
+          approves the order.
+        </p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-white/30">
+              Order amount
+            </p>
+
+            <p className="mt-1 text-lg font-bold text-white">
+              ₹{order.totalAmount.toLocaleString("en-IN")}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-white/30">
+              Autonomous limit
+            </p>
+
+            <p className="mt-1 text-lg font-bold text-white">
+              ₹5,000
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-white/[0.06] bg-white/[0.03] p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-white/30">
+              Payment
+            </p>
+
+            <p className="mt-1 text-lg font-bold text-amber-300">
+              Waiting
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 flex items-center gap-2 text-xs text-white/40">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+          Waiting for merchant decision
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void loadCartAndOrder({ silent: true })}
+          className="mt-4 rounded-lg border border-amber-500/20 px-4 py-2 text-xs text-amber-300 transition hover:bg-amber-500/10"
+        >
+          Refresh status
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
             {order.status === "APPROVED" && (
               <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-6">
@@ -574,6 +721,30 @@ export default function CheckoutPage() {
                     Razorpay Order: {payment.razorpayOrderId}
                   </p>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => void startPayment()}
+                  disabled={paymentLoading}
+                  className="btn-primary mt-5 w-full py-3 disabled:opacity-50"
+                >
+                  {paymentLoading
+                    ? "Opening payment..."
+                    : "Continue Razorpay payment"}
+                </button>
+              </div>
+            )}
+
+            {order.status === "CANCELLED" && (
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-6">
+                <h2 className="text-xl font-bold text-red-300">
+                  Order cancelled
+                </h2>
+
+                <p className="mt-2 text-sm text-red-200/70">
+                  {order.policyReason ??
+                    "The merchant rejected this order. You can return to shopping and create a new order."}
+                </p>
               </div>
             )}
 

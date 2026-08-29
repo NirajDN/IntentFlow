@@ -260,8 +260,8 @@ export interface ShoppingIntent {
   minPrice?: number;
   maxPrice?: number;
   inStockOnly: boolean;
+  source?: "gemini" | "fallback";
 }
-
 export interface IntentParserOptions {
   apiKey?: string;
   model?: string;
@@ -297,7 +297,7 @@ export class GeminiIntentParser {
       "gemini-2.5-flash";
   }
 
-  async parseIntent(
+    async parseIntent(
     message: string
   ): Promise<ShoppingIntent> {
     const trimmed = message.trim();
@@ -396,33 +396,103 @@ Return ONLY JSON.
 
         category:
           typeof parsed.category === "string" &&
-            parsed.category.trim().length > 0
+          parsed.category.trim().length > 0
             ? parsed.category.trim()
             : undefined,
 
         minPrice:
           typeof parsed.minPrice === "number" &&
-            Number.isFinite(parsed.minPrice)
+          Number.isFinite(parsed.minPrice)
             ? parsed.minPrice
             : undefined,
 
         maxPrice:
           typeof parsed.maxPrice === "number" &&
-            Number.isFinite(parsed.maxPrice)
+          Number.isFinite(parsed.maxPrice)
             ? parsed.maxPrice
             : undefined,
 
         inStockOnly:
           parsed.inStockOnly !== false,
+
+        source: "gemini",
       };
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        throw new Error(
-          `Gemini intent parsing failed: ${err.message}`
-        );
-      }
+      console.warn(
+        "Gemini intent parsing failed. Using local fallback parser.",
+        err
+      );
 
-      throw err;
+      return parseIntentFallback(trimmed);
     }
   }
+}
+function parseIntentFallback(
+  message: string
+): ShoppingIntent {
+  const lower = message.toLowerCase();
+
+  let category: string | undefined;
+
+  if (
+    lower.includes("gaming") ||
+    lower.includes("pc gaming") ||
+    lower.includes("playstation")
+  ) {
+    category = "Gaming";
+  } else if (
+    lower.includes("headphone") ||
+    lower.includes("earphone") ||
+    lower.includes("earbud") ||
+    lower.includes("speaker") ||
+    lower.includes("audio") ||
+    lower.includes("music")
+  ) {
+    category = "Audio";
+  }
+
+  let maxPrice: number | undefined;
+  let minPrice: number | undefined;
+
+  const maxMatch = lower.match(
+    /(?:under|below|less than|upto|up to)\s*(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*)/
+  );
+
+  if (maxMatch?.[1]) {
+    maxPrice = Number(maxMatch[1].replace(/,/g, ""));
+  }
+
+  const minMatch = lower.match(
+    /(?:above|over|more than)\s*(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*)/
+  );
+
+  if (minMatch?.[1]) {
+    minPrice = Number(minMatch[1].replace(/,/g, ""));
+  }
+
+  let query = message
+    .replace(
+      /(?:under|below|less than|upto|up to)\s*(?:₹|rs\.?|inr)?\s*\d+(?:,\d+)*/gi,
+      ""
+    )
+    .replace(
+      /(?:above|over|more than)\s*(?:₹|rs\.?|inr)?\s*\d+(?:,\d+)*/gi,
+      ""
+    )
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!query) {
+    query = message.trim();
+  }
+
+  return {
+    query,
+    category,
+    minPrice,
+    maxPrice,
+    inStockOnly: true,
+    source: "fallback",
+
+  };
 }

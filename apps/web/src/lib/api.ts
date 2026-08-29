@@ -33,6 +33,57 @@ export function clearStoredSession(): void {
   localStorage.removeItem(USER_KEY);
 }
 
+export const ACTIVE_ORDER_STATUSES = [
+  "PENDING_APPROVAL",
+  "APPROVED",
+  "PAYMENT_PENDING",
+] as const;
+
+export function isActiveOrderStatus(status: string): boolean {
+  return (ACTIVE_ORDER_STATUSES as readonly string[]).includes(status);
+}
+
+export function selectActiveBuyerOrder<T extends { status: string }>(
+  orders: T[]
+): T | undefined {
+  return orders.find((order) => isActiveOrderStatus(order.status));
+}
+
+export function selectCheckoutOrder<T extends { status: string }>(
+  orders: T[]
+): T | undefined {
+  const active = selectActiveBuyerOrder(orders);
+  if (active) {
+    return active;
+  }
+
+  const latest = orders[0];
+  if (
+    latest &&
+    (latest.status === "PAID" || latest.status === "CANCELLED")
+  ) {
+    return latest;
+  }
+
+  return undefined;
+}
+
+export function selectBuyerHomeOrder<T extends { status: string }>(
+  orders: T[]
+): T | undefined {
+  const active = selectActiveBuyerOrder(orders);
+  if (active) {
+    return active;
+  }
+
+  const latest = orders[0];
+  if (latest?.status === "CANCELLED") {
+    return latest;
+  }
+
+  return undefined;
+}
+
 export async function apiFetch<T>(
   endpoint: string,
   options: RequestInit = {}

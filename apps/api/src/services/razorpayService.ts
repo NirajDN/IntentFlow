@@ -1,10 +1,4 @@
-import dotenv from "dotenv";
 import Razorpay from "razorpay";
-
-dotenv.config({
-  path: "C:\\NIRAJDN\\IntentFlow\\apps\\api\\.env",
-  override: true,
-});
 
 const keyId = process.env["RAZORPAY_KEY_ID"];
 const keySecret = process.env["RAZORPAY_KEY_SECRET"];

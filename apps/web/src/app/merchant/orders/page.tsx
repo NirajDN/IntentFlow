@@ -46,7 +46,12 @@ export default function MerchantOrdersPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const user = getStoredUser();
+  const [user, setUser] = useState<ReturnType<typeof getStoredUser>>(null);
+
+  useEffect(() => {
+    setUser(getStoredUser());
+    void loadOrders();
+  }, []);
 
   async function loadOrders() {
     setLoading(true);
@@ -70,10 +75,6 @@ export default function MerchantOrdersPage() {
       setLoading(false);
     }
   }
-
-  useEffect(() => {
-    void loadOrders();
-  }, []);
 
   async function approveOrder(orderId: string) {
     setActionOrderId(orderId);
@@ -223,6 +224,13 @@ export default function MerchantOrdersPage() {
           </a>
 
           <a
+            href="/merchant/orders"
+            className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-2 text-sm text-violet-300"
+          >
+            Orders
+          </a>
+
+          <a
             href="/merchant/products"
             className="hidden rounded-xl border border-white/10 px-4 py-2 text-sm text-white/60 transition hover:border-violet-500/40 hover:text-white sm:block"
           >
@@ -234,13 +242,6 @@ export default function MerchantOrdersPage() {
             className="hidden rounded-xl border border-white/10 px-4 py-2 text-sm text-white/60 transition hover:border-violet-500/40 hover:text-white sm:block"
           >
             Inventory
-          </a>
-
-          <a
-            href="/merchant/orders"
-            className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-2 text-sm text-violet-300"
-          >
-            Orders
           </a>
         </div>
       </nav>

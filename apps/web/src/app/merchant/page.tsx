@@ -157,6 +157,12 @@ export default function MerchantDashboard() {
               Overview &amp; Policy
             </Link>
             <Link
+              href="/merchant/orders"
+              className="px-3 py-1.5 rounded-lg text-[#8080a8] hover:text-white hover:bg-white/[0.04] transition-all"
+            >
+              Orders
+            </Link>
+            <Link
               href="/merchant/products"
               className="px-3 py-1.5 rounded-lg text-[#8080a8] hover:text-white hover:bg-white/[0.04] transition-all"
             >
@@ -166,7 +172,7 @@ export default function MerchantDashboard() {
               href="/merchant/inventory"
               className="px-3 py-1.5 rounded-lg text-[#8080a8] hover:text-white hover:bg-white/[0.04] transition-all"
             >
-              Inventory Management
+              Inventory
             </Link>
           </nav>
         </div>
@@ -190,12 +196,40 @@ export default function MerchantDashboard() {
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-xs font-medium text-violet-300 mb-3">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            M2 Merchant Foundation
+            Merchant Workspace
           </div>
-          <h1 className="text-3xl font-bold tracking-tight">Merchant Workspace</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Merchant Dashboard</h1>
           <p className="text-sm text-[#8080a8] mt-1">
             Configure your storefront identity and policy constraints for autonomous AI agents.
           </p>
+        </div>
+
+        {/* Quick-nav cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          <Link
+            href="/merchant/orders"
+            className="glass p-5 rounded-2xl border border-amber-500/20 bg-amber-500/[0.04] hover:border-amber-500/40 transition-all group"
+          >
+            <div className="text-2xl mb-2">📋</div>
+            <h3 className="font-bold text-amber-300 group-hover:text-amber-200">Orders</h3>
+            <p className="text-xs text-[#8080a8] mt-1">Review and approve pending orders</p>
+          </Link>
+          <Link
+            href="/merchant/products"
+            className="glass p-5 rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] hover:border-violet-500/40 transition-all group"
+          >
+            <div className="text-2xl mb-2">🛍️</div>
+            <h3 className="font-bold text-violet-300 group-hover:text-violet-200">Products</h3>
+            <p className="text-xs text-[#8080a8] mt-1">Manage your product catalog</p>
+          </Link>
+          <Link
+            href="/merchant/inventory"
+            className="glass p-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.04] hover:border-cyan-500/40 transition-all group"
+          >
+            <div className="text-2xl mb-2">📦</div>
+            <h3 className="font-bold text-cyan-300 group-hover:text-cyan-200">Inventory</h3>
+            <p className="text-xs text-[#8080a8] mt-1">Track stock, reserved and sold units</p>
+          </Link>
         </div>
 
         {error && (

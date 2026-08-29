@@ -25,7 +25,9 @@ const PORT = parseInt(process.env["API_PORT"] ?? "4000", 10);
 app.use(helmet());
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: (process.env["CORS_ORIGIN"] ?? "http://localhost:3000")
+      .split(",")
+      .map((o) => o.trim()),
     credentials: true,
   })
 );
