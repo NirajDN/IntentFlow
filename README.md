@@ -1194,33 +1194,53 @@ The key architectural principle is:
 * [x] Merchant authentication
 * [x] Product catalog
 * [x] Inventory management
+* [x] Inventory reservation and stock lifecycle
 * [x] Cart management
-* [x] Checkout
+* [x] Cart / order separation
+* [x] Checkout flow
 * [x] Autonomous spending policy
 * [x] Policy audit records
-* [x] Merchant approval workflow
+* [x] Merchant approval / rejection workflow
+* [x] Buyer order history
 * [x] Merchant order dashboard
+* [x] Role-aware buyer / merchant navigation
+* [x] Order state machine
+* [x] Payment state management
 * [x] Razorpay order creation
 * [x] Razorpay Checkout integration
+* [x] Razorpay payment resume / idempotency
 * [x] Razorpay signature verification
-* [x] Payment state management
-* [x] Order `PAID` state
+* [x] Concurrent checkout protection
+* [x] Inventory concurrency protection
+* [x] Approve / reject race-condition protection
+* [x] Order ownership and merchant authorization
+* [x] Hydration-safe authentication state
+* [x] Configurable CORS
+* [x] Environment-based API configuration
+* [x] Removal of machine-specific paths
+* [x] Server-side Razorpay secret protection
 * [x] TypeScript validation
 * [x] Production build validation
+* [x] Deployment-readiness audit
 
 ### Next
 
-* [ ] Advanced order history UI
+* [ ] Production deployment
+* [ ] Automated end-to-end / integration tests
+* [ ] Payment failure and retry UX
 * [ ] Real-time merchant approval updates
-* [ ] Payment failure/retry UX
-* [ ] Better inventory reservation during checkout
+* [ ] Advanced order history and order-detail UI
 * [ ] Product image management
 * [ ] Advanced merchant analytics
-* [ ] Production deployment
-* [ ] Automated integration tests
 * [ ] Observability and audit dashboards
+* [ ] Email / webhook notifications
+* [ ] Mobile-friendly merchant navigation
 
 ---
+
+> **Current milestone:** Core end-to-end commerce orchestration is complete and validated locally.
+>
+> **Next focus:** Production deployment, automated testing, observability, and experience improvements.
 
 # 🎯 Project Status
 
