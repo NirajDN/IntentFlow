@@ -1,12 +1,16 @@
+<img width="1254" height="1254" alt="IntentFlow Logo" src="https://github.com/user-attachments/assets/506aad52-c961-4440-adfe-5695d9772511" />
+
 # IntentFlow
 
-<!--### AI-Native Commerce Orchestration
+### AI-Native Commerce Orchestration
 
-> **AI proposes. Policy decides. Merchant approves. Razorpay executes.**-->
+> **AI proposes. Policy decides. Merchant approves. Razorpay executes.**
 
-IntentFlow is a full-stack, intent-driven commerce platform that allows buyers to describe what they want in natural language instead of navigating traditional product catalogs.
+IntentFlow is a full-stack, intent-driven commerce platform that transforms natural-language shopping requests into controlled, policy-aware purchasing workflows.
 
-The platform uses AI to understand shopping intent, discover and rank relevant products, apply merchant-defined autonomous spending policies, route high-value purchases for merchant approval, and execute approved payments through Razorpay.
+Instead of navigating traditional product catalogs, buyers simply describe what they want. IntentFlow uses AI to understand their intent, discover and semantically rank relevant products, evaluate purchases against autonomous spending policies, route high-value orders for merchant approval, and securely execute approved payments through Razorpay.
+
+**From intent to payment — with AI intelligence, policy control, and merchant oversight built into the flow.**
 
 ---
 
