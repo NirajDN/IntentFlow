@@ -33,6 +33,7 @@ describe("M4-D: Hybrid Semantic Product Search", () => {
     await prisma.inventoryAdjustment.deleteMany();
     await prisma.inventory.deleteMany();
     await prisma.productVariant.deleteMany();
+    await prisma.order.deleteMany();
     await prisma.product.deleteMany();
     await prisma.merchantPolicy.deleteMany();
     await prisma.merchant.deleteMany();

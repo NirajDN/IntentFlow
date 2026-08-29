@@ -259,6 +259,7 @@ export interface ShoppingIntent {
   category?: string;
   minPrice?: number;
   maxPrice?: number;
+  ram?: number;
   inStockOnly: boolean;
   source?: "gemini" | "fallback";
 }
@@ -319,14 +320,24 @@ User request:
 Available product categories in the catalog:
 - Audio
 - Gaming
+- Keyboards
+- Gaming Mice
+- Laptops
+- Smartphones
+- Monitors
+- Accessories
+- Storage
+- Networking
+- Speakers
 
 Return ONLY valid JSON with exactly these fields:
 
 {
   "query": "semantic product search query",
-  "category": "category name or null",
+  "category": "one of the available catalog categories or null",
   "minPrice": number or null,
   "maxPrice": number or null,
+  "ram": number or null,
   "inStockOnly": boolean
 }
 
@@ -338,13 +349,20 @@ Rules:
 - Keep important attributes such as wireless, noise cancelling, gaming, microphone, bass, lightweight, etc.
 
 2. CATEGORY
-- category MUST be either "Audio", "Gaming", or null.
-- "headphones", "earphones", "earbuds", "speakers", "music", "audio" should map to "Audio".
-- "gaming headset", "gaming headphones", "gaming microphone", "gaming", "PC gaming", "PlayStation gaming" should map to "Gaming".
-- Do NOT return product types such as "headphones" as a category.
+- Return exactly one category from the available catalog categories, or null if the category genuinely cannot be determined.
+- "headphones", "earphones", "earbuds", "audio", "music" → "Audio".
+- "gaming headset", "gaming headphones", "gaming", "PC gaming", "PlayStation gaming" → "Gaming".
+- "keyboard", "mechanical keyboard", "RGB keyboard" → "Keyboards".
+- "gaming mouse", "gaming mice", "mouse" → "Gaming Mice".
+- "laptop", "notebook", "programming laptop", "college laptop", "gaming laptop", "gaming notebook" → "Laptops".
+- "phone", "smartphone", "mobile" → "Smartphones".
+- "monitor", "display", "screen" → "Monitors".
+- "webcam", "power bank", "accessory", "accessories" → "Accessories".
+- "SSD", "hard drive", "external drive", "storage" → "Storage".
+- "router", "Wi-Fi", "wifi", "networking" → "Networking".
+- "speaker", "Bluetooth speaker", "portable speaker" → "Speakers".
+- Never return a product name as the category.
 - Never invent a category.
-- If the category is unclear, use null.
-
 3. PRICE
 - Prices must be numbers in INR.
 - "under 5000" means maxPrice = 5000.
@@ -356,7 +374,15 @@ Rules:
 - If no maximum price is specified, use null.
 - Never invent a price.
 
-4. STOCK
+4. RAM
+- If the user explicitly specifies RAM, extract it as a number in GB.
+- "32 GB RAM", "32GB RAM", "RAM should be 32 GB" means ram = 32.
+- "16 GB RAM" means ram = 16.
+- Never invent a RAM requirement.
+- If RAM is not specified, use null.
+- RAM is a hard requirement and must be treated as a mandatory product constraint.
+
+5. STOCK
 - Set inStockOnly to true by default.
 - Only set it to false when the user explicitly asks for unavailable or out-of-stock products.
 
@@ -407,13 +433,19 @@ Return ONLY JSON.
             : undefined,
 
         maxPrice:
-          typeof parsed.maxPrice === "number" &&
-          Number.isFinite(parsed.maxPrice)
-            ? parsed.maxPrice
-            : undefined,
+  typeof parsed.maxPrice === "number" &&
+  Number.isFinite(parsed.maxPrice)
+    ? parsed.maxPrice
+    : undefined,
 
-        inStockOnly:
-          parsed.inStockOnly !== false,
+ram:
+  typeof parsed.ram === "number" &&
+  Number.isFinite(parsed.ram)
+    ? parsed.ram
+    : undefined,
+
+inStockOnly:
+  parsed.inStockOnly !== false,
 
         source: "gemini",
       };
@@ -434,25 +466,106 @@ function parseIntentFallback(
 
   let category: string | undefined;
 
+  // NOTE: Order matters — more-specific checks must appear before generic ones.
+  // "gaming mouse" → Gaming Mice (before generic "gaming")
+  // "gaming laptop" / "gaming notebook" → Laptops (before generic "gaming")
+  // "gaming monitor" → Monitors (before generic "gaming")
+  // "keyboard" → Keyboards (before generic "gaming")
   if (
-    lower.includes("gaming") ||
-    lower.includes("pc gaming") ||
-    lower.includes("playstation")
+    lower.includes("gaming mouse") ||
+    lower.includes("gaming mice") ||
+    lower.match(/\bmouse\b/) !== null
   ) {
-    category = "Gaming";
+    category = "Gaming Mice";
   } else if (
-    lower.includes("headphone") ||
-    lower.includes("earphone") ||
-    lower.includes("earbud") ||
-    lower.includes("speaker") ||
-    lower.includes("audio") ||
-    lower.includes("music")
+    lower.includes("gaming laptop") ||
+    lower.includes("gaming notebook")
   ) {
-    category = "Audio";
-  }
+    category = "Laptops";
+  } else if (
+    lower.includes("mechanical keyboard") ||
+    lower.includes("keyboard") ||
+    lower.includes("rgb keyboard")
+  ) {
+    category = "Keyboards";
+  } else if (
+    lower.includes("monitor") ||
+    lower.includes("display") ||
+    lower.includes("screen")
+  ) {
+    category = "Monitors";
+  } else if (
+  lower.includes("gaming headset") ||
+  lower.includes("gaming headphones") ||
+  lower.includes("gaming microphone") ||
+  lower.includes("pc gaming") ||
+  lower.includes("playstation") ||
+  lower.includes("gaming")
+) {
+  category = "Gaming";
+} else if (
+  lower.includes("laptop") ||
+  lower.includes("notebook") ||
+  lower.includes("programming laptop") ||
+  lower.includes("college laptop")
+) {
+  category = "Laptops";
+} else if (
+  lower.includes("smartphone") ||
+  lower.includes("mobile phone") ||
+  /\bphone\b/.test(lower)
+) {
+  category = "Smartphones";
+} else if (
+  lower.includes("ssd") ||
+  lower.includes("hard drive") ||
+  lower.includes("external drive") ||
+  lower.includes("storage")
+) {
+  category = "Storage";
+} else if (
+  lower.includes("router") ||
+  lower.includes("wi-fi") ||
+  lower.includes("wifi") ||
+  lower.includes("networking")
+) {
+  category = "Networking";
+} else if (
+  lower.includes("webcam") ||
+  lower.includes("power bank") ||
+  lower.includes("accessory") ||
+  lower.includes("accessories")
+) {
+  category = "Accessories";
+} else if (
+  lower.includes("bluetooth speaker") ||
+  lower.includes("portable speaker") ||
+  lower.includes("speaker")
+) {
+  category = "Speakers";
+} else if (
+  lower.includes("headphone") ||
+  lower.includes("earphone") ||
+  lower.includes("earbud") ||
+  lower.includes("audio") ||
+  lower.includes("music")
+) {
+  category = "Audio";
+}
 
   let maxPrice: number | undefined;
   let minPrice: number | undefined;
+let ram: number | undefined;
+
+const ramMatch = lower.match(
+  /(?:ram|memory)\s*(?:should\s*be|is|of|:)?\s*(\d+)\s*gb/
+) ?? lower.match(
+  /(\d+)\s*gb\s*(?:ram|memory)/
+);
+
+if (ramMatch?.[1]) {
+  ram = Number(ramMatch[1]);
+}
 
   const maxMatch = lower.match(
     /(?:under|below|less than|upto|up to)\s*(?:₹|rs\.?|inr)?\s*(\d+(?:,\d+)*)/
@@ -491,6 +604,7 @@ function parseIntentFallback(
     category,
     minPrice,
     maxPrice,
+    ram,
     inStockOnly: true,
     source: "fallback",
 

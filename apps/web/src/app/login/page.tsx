@@ -51,13 +51,7 @@ export default function LoginPage() {
       {/* ── Header ── */}
       <header className="px-6 py-5 md:px-12 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-3">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-white"
-            style={{
-              background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
-              boxShadow: "0 4px 16px rgba(124,58,237,0.4)",
-            }}
-          >
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white transition hover:border-violet-500/30">
             <BrandIcon size={18} />
           </div>
           <span className="text-lg font-bold tracking-tight">IntentFlow</span>

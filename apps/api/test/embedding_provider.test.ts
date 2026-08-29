@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-  OpenAIEmbeddingProvider,
+  GeminiEmbeddingProvider,
   buildProductEmbeddingText,
   type ProductSemanticInput,
 } from "@intentflow/ai";
@@ -23,7 +23,8 @@ describe("M4-B: Embedding Provider & Semantic Text Extractor", () => {
       name: "Pro Noise-Cancelling Headphones",
       brand: "AudioCraft",
       category: { name: "Electronics & Audio" },
-      description: "Over-ear wireless headphones with active noise cancellation and 40h battery.",
+      description:
+        "Over-ear wireless headphones with active noise cancellation and 40h battery.",
       tags: ["wireless", "anc", "bluetooth", "hifi"],
       specifications: {
         driver: "40mm dynamic",
@@ -32,7 +33,8 @@ describe("M4-B: Embedding Provider & Semantic Text Extractor", () => {
       },
       deliveryInfo: "Next day delivery available",
       returnPolicy: "14-day replacement policy",
-      // Non-semantic / sensitive / inventory fields that must NOT be included:
+
+      // Non-semantic / sensitive / inventory fields
       price: 14999.0,
       currency: "INR",
       stock: 45,
@@ -47,18 +49,31 @@ describe("M4-B: Embedding Provider & Semantic Text Extractor", () => {
     it("includes all semantic fields in generated text", () => {
       const text = buildProductEmbeddingText(fullProduct);
 
-      expect(text).toContain("Product: Pro Noise-Cancelling Headphones");
+      expect(text).toContain(
+        "Product: Pro Noise-Cancelling Headphones"
+      );
       expect(text).toContain("Brand: AudioCraft");
       expect(text).toContain("Category: Electronics & Audio");
-      expect(text).toContain("Description: Over-ear wireless headphones with active noise cancellation and 40h battery.");
-      expect(text).toContain("Tags: wireless, anc, bluetooth, hifi");
-      expect(text).toContain("Specifications: driver: 40mm dynamic; batteryLife: 40 hours; weight: 250g");
-      expect(text).toContain("Delivery Info: Next day delivery available");
-      expect(text).toContain("Return Policy: 14-day replacement policy");
+      expect(text).toContain(
+        "Description: Over-ear wireless headphones with active noise cancellation and 40h battery."
+      );
+      expect(text).toContain(
+        "Tags: wireless, anc, bluetooth, hifi"
+      );
+      expect(text).toContain(
+        "Specifications: driver: 40mm dynamic; batteryLife: 40 hours; weight: 250g"
+      );
+      expect(text).toContain(
+        "Delivery Info: Next day delivery available"
+      );
+      expect(text).toContain(
+        "Return Policy: 14-day replacement policy"
+      );
     });
 
     it("strictly excludes price and currency", () => {
       const text = buildProductEmbeddingText(fullProduct);
+
       expect(text).not.toContain("14999");
       expect(text).not.toContain("Price");
       expect(text).not.toContain("INR");
@@ -66,6 +81,7 @@ describe("M4-B: Embedding Provider & Semantic Text Extractor", () => {
 
     it("strictly excludes stock and inventory metrics", () => {
       const text = buildProductEmbeddingText(fullProduct);
+
       expect(text).not.toContain("Stock");
       expect(text).not.toContain("availableQuantity");
       expect(text).not.toContain("reservedQuantity");
@@ -76,6 +92,7 @@ describe("M4-B: Embedding Provider & Semantic Text Extractor", () => {
 
     it("strictly excludes SKU and merchant credentials", () => {
       const text = buildProductEmbeddingText(fullProduct);
+
       expect(text).not.toContain("AC-ANC-001");
       expect(text).not.toContain("SKU");
       expect(text).not.toContain("sku");
@@ -90,124 +107,172 @@ describe("M4-B: Embedding Provider & Semantic Text Extractor", () => {
       };
 
       const text = buildProductEmbeddingText(sparseProduct);
+
       expect(text).toBe("Product: Simple Wireless Mouse");
     });
   });
 
-  describe("OpenAIEmbeddingProvider Implementation", () => {
-    it("initializes without throwing even when OPENAI_API_KEY is unset", () => {
-      delete process.env.OPENAI_API_KEY;
-      expect(() => new OpenAIEmbeddingProvider()).not.toThrow();
+  describe("GeminiEmbeddingProvider Implementation", () => {
+    it("throws a clear error when Gemini API key is missing", () => {
+      delete process.env.GEMINI_API_KEY;
+      delete process.env.GOOGLE_API_KEY;
+
+      expect(
+        () => new GeminiEmbeddingProvider({ apiKey: "" })
+      ).toThrow(
+        "Gemini API key is missing. Set GEMINI_API_KEY in environment variables."
+      );
     });
 
-    it("throws a clear error when embedding is requested without API key", async () => {
-      delete process.env.OPENAI_API_KEY;
-      const provider = new OpenAIEmbeddingProvider({ apiKey: "" });
-
-      await expect(provider.embedText("test query")).rejects.toThrow(
-        "OpenAI API key is missing. Set OPENAI_API_KEY in environment variables."
-      );
+    it("accepts an explicit Gemini API key", () => {
+      expect(
+        () =>
+          new GeminiEmbeddingProvider({
+            apiKey: "mock-gemini-key",
+          })
+      ).not.toThrow();
     });
 
     it("throws a clear error when attempting to embed empty text", async () => {
-      const provider = new OpenAIEmbeddingProvider({ apiKey: "mock-key" });
-      await expect(provider.embedText("   ")).rejects.toThrow("Cannot embed empty text.");
+      const provider = new GeminiEmbeddingProvider({
+        apiKey: "mock-key",
+      });
+
+      await expect(
+        provider.embedText("   ")
+      ).rejects.toThrow("Cannot embed empty text.");
     });
 
-    it("handles OpenAI API error responses cleanly", async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-        text: async () => JSON.stringify({ error: { message: "Invalid authentication credentials" } }),
+    it("handles Gemini API errors cleanly", async () => {
+      const provider = new GeminiEmbeddingProvider({
+        apiKey: "invalid-key",
       });
-      vi.stubGlobal("fetch", mockFetch);
 
-      const provider = new OpenAIEmbeddingProvider({ apiKey: "invalid-key" });
-      await expect(provider.embedText("search term")).rejects.toThrow(
-        "OpenAI embedding API failed with status 401"
+      const embedContentSpy = vi
+        .spyOn(
+          (provider as any).client.models,
+          "embedContent"
+        )
+        .mockRejectedValue(
+          new Error("Invalid authentication credentials")
+        );
+
+      await expect(
+        provider.embedText("search term")
+      ).rejects.toThrow(
+        "Gemini embedding API failed: Invalid authentication credentials"
       );
+
+      expect(embedContentSpy).toHaveBeenCalled();
     });
 
     it("successfully returns a 1536-dimensional embedding with mocked API", async () => {
-      const mockVector = Array.from({ length: 1536 }, (_, i) => Math.sin(i));
+      const mockVector = Array.from(
+        { length: 1536 },
+        (_, i) => Math.sin(i)
+      );
 
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          object: "list",
-          data: [{ object: "embedding", index: 0, embedding: mockVector }],
-          model: "text-embedding-3-small",
-        }),
+      const provider = new GeminiEmbeddingProvider({
+        apiKey: "valid-mock-key",
       });
-      vi.stubGlobal("fetch", mockFetch);
 
-      const provider = new OpenAIEmbeddingProvider({ apiKey: "valid-mock-key" });
-      const embedding = await provider.embedText("premium mechanical keyboard");
+      const embedContentSpy = vi
+        .spyOn(
+          (provider as any).client.models,
+          "embedContent"
+        )
+        .mockResolvedValue({
+          embeddings: [{ values: mockVector }],
+        });
+
+      const embedding = await provider.embedText(
+        "premium mechanical keyboard"
+      );
 
       expect(embedding).toHaveLength(1536);
       expect(embedding[0]).toBeCloseTo(Math.sin(0));
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://api.openai.com/v1/embeddings",
-        expect.objectContaining({
-          method: "POST",
-          headers: expect.objectContaining({
-            Authorization: "Bearer valid-mock-key",
-            "Content-Type": "application/json",
-          }),
-          body: JSON.stringify({
-            model: "text-embedding-3-small",
-            input: "premium mechanical keyboard",
-            dimensions: 1536,
-          }),
-        })
-      );
+
+      expect(embedContentSpy).toHaveBeenCalledWith({
+        model: "gemini-embedding-001",
+        contents: "premium mechanical keyboard",
+        config: {
+          outputDimensionality: 1536,
+        },
+      });
     });
 
     it("embeds product using semantic representation", async () => {
-      const mockVector = Array.from({ length: 1536 }, () => 0.05);
+      const mockVector = Array.from(
+        { length: 1536 },
+        () => 0.05
+      );
 
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          data: [{ embedding: mockVector }],
-        }),
+      const provider = new GeminiEmbeddingProvider({
+        apiKey: "valid-mock-key",
       });
-      vi.stubGlobal("fetch", mockFetch);
 
-      const provider = new OpenAIEmbeddingProvider({ apiKey: "valid-mock-key" });
+      const embedContentSpy = vi
+        .spyOn(
+          (provider as any).client.models,
+          "embedContent"
+        )
+        .mockResolvedValue({
+          embeddings: [{ values: mockVector }],
+        });
+
       const embedding = await provider.embedProduct({
         name: "Ergonomic Office Chair",
         brand: "ComfortPlus",
-        price: 9999, // Should be ignored in payload
+        price: 9999,
       });
 
       expect(embedding).toHaveLength(1536);
-      const requestBody = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(requestBody.input).toContain("Product: Ergonomic Office Chair");
-      expect(requestBody.input).toContain("Brand: ComfortPlus");
-      expect(requestBody.input).not.toContain("9999");
+
+      expect(embedContentSpy).toHaveBeenCalledWith({
+        model: "gemini-embedding-001",
+        contents: expect.stringContaining(
+          "Product: Ergonomic Office Chair"
+        ),
+        config: {
+          outputDimensionality: 1536,
+        },
+      });
+
+      const request = embedContentSpy.mock.calls[0][0];
+
+      expect(request.contents).toContain(
+        "Brand: ComfortPlus"
+      );
+      expect(request.contents).not.toContain("9999");
     });
 
     it("handles request timeout cleanly", async () => {
-      const mockFetch = vi.fn().mockImplementation((_url, options) => {
-        return new Promise((_, reject) => {
-          options?.signal?.addEventListener("abort", () => {
-            const err = new Error("This operation was aborted");
-            err.name = "AbortError";
-            reject(err);
-          });
-        });
-      });
-      vi.stubGlobal("fetch", mockFetch);
-
-      const provider = new OpenAIEmbeddingProvider({
+      const provider = new GeminiEmbeddingProvider({
         apiKey: "valid-mock-key",
         timeoutMs: 50,
       });
 
-      await expect(provider.embedText("timeout test")).rejects.toThrow(
-        "OpenAI embedding request timed out"
+      const embedContentSpy = vi
+        .spyOn(
+          (provider as any).client.models,
+          "embedContent"
+        )
+        .mockRejectedValue(
+          Object.assign(
+            new Error("This operation was aborted"),
+            {
+              name: "AbortError",
+            }
+          )
+        );
+
+      await expect(
+        provider.embedText("timeout test")
+      ).rejects.toThrow(
+        "Gemini embedding API failed: This operation was aborted"
       );
+
+      expect(embedContentSpy).toHaveBeenCalled();
     });
   });
 });

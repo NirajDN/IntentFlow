@@ -103,6 +103,10 @@ export async function apiFetch<T>(
     headers,
   });
 
+  if (response.status === 401) {
+    clearStoredSession();
+  }
+
   const data = (await response.json()) as ApiResponse<T>;
   return data;
 }

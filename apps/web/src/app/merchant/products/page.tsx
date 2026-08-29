@@ -144,13 +144,7 @@ export default function MerchantProductsPage() {
       <header className="border-b border-white/[0.08] bg-[#05050f]/80 backdrop-blur-md px-6 py-4 md:px-12 flex items-center justify-between sticky top-0 z-20">
         <div className="flex items-center gap-6">
           <Link href="/" className="flex items-center gap-3">
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-white"
-              style={{
-                background: "linear-gradient(135deg, #7c3aed, #4f46e5)",
-                boxShadow: "0 4px 16px rgba(124,58,237,0.4)",
-              }}
-            >
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white transition hover:border-violet-500/30">
               <BrandIcon size={16} />
             </div>
             <span className="text-base font-bold tracking-tight">IntentFlow</span>

@@ -103,6 +103,7 @@ router.post("/intent", async (req: Request, res: Response) => {
       minPrice: intent.minPrice,
       maxPrice: intent.maxPrice,
       inStockOnly: intent.inStockOnly,
+      ram: intent.ram,
       page: 1,
       limit: 20,
     });

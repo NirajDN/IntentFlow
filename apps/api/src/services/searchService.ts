@@ -12,6 +12,7 @@ export interface SearchProductsParams {
   merchantId?: string;
   minPrice?: number;
   maxPrice?: number;
+  ram?: number;
   activeOnly?: boolean;      // default true
   inStockOnly?: boolean;     // default false
   page?: number;             // >= 1
@@ -94,16 +95,23 @@ interface VectorMatch {
 // semanticScore  : cosine similarity from pgvector (0..1), 0 when no embedding
 // constraintScore: deterministic boolean flag scoring (category+merchant match)
 // priceFitScore  : 1.0 when price is inside [minPrice, maxPrice], linear otherwise
-const WEIGHT_SEMANTIC = 0.75;
-const WEIGHT_CONSTRAINT = 0.15;
-const WEIGHT_PRICE_FIT = 0.10;
+const WEIGHT_SEMANTIC = 0.60;
+const WEIGHT_CONSTRAINT = 0.20;
+const WEIGHT_PRICE_FIT = 0.20;
 
 // ─── Parameter validation ─────────────────────────────────────────────────────
 
 export function validateSearchParams(raw: SearchProductsParams): {
   valid: boolean;
   errors: string[];
-  normalized: Required<Omit<SearchProductsParams, "query" | "categoryId" | "category" | "merchantId" | "minPrice" | "maxPrice" | "provider">> & SearchProductsParams;
+ normalized: SearchProductsParams & {
+  page: number;
+  limit: number;
+  activeOnly: boolean;
+  inStockOnly: boolean;
+  minPrice?: number;
+  maxPrice?: number;
+};
 } {
   const errors: string[] = [];
 
@@ -176,6 +184,7 @@ export async function searchProducts(
     merchantId,
     minPrice,
     maxPrice,
+    ram,
     activeOnly,
     inStockOnly,
     page,
@@ -258,8 +267,15 @@ export async function searchProducts(
   }
 
   if (inStockOnly) {
-    where["inventory"] = { availableQuantity: { gt: 0 } };
-  }
+  where["inventory"] = { availableQuantity: { gt: 0 } };
+}
+
+if (ram !== undefined) {
+  where["specifications"] = {
+    path: ["ram"],
+    equals: ram,
+  };
+}
 
   // ── Step 3: Embed query for semantic search ──────────────────────────────
   let vectorMatches: Map<string, number> = new Map();

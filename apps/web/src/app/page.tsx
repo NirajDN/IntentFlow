@@ -63,6 +63,24 @@ type IntentResponse = {
     semanticEnabled: boolean;
   };
 };
+
+function getProductIcon(categoryName?: string | null, productName?: string): string {
+  const cat = (categoryName || "").toLowerCase();
+  const name = (productName || "").toLowerCase();
+
+  if (cat.includes("laptop") || name.includes("laptop") || name.includes("notebook")) return "💻";
+  if (cat.includes("monitor") || name.includes("monitor") || name.includes("display")) return "🖥️";
+  if (cat.includes("keyboard") || name.includes("keyboard")) return "⌨️";
+  if (cat.includes("mice") || cat.includes("mouse") || name.includes("mouse")) return "🖱️";
+  if (cat.includes("phone") || name.includes("phone") || name.includes("smartphone")) return "📱";
+  if (cat.includes("storage") || name.includes("ssd") || name.includes("hard drive") || name.includes("hdd")) return "💾";
+  if (cat.includes("network") || name.includes("router") || name.includes("wi-fi")) return "🌐";
+  if (cat.includes("speaker") || name.includes("speaker") || name.includes("soundbar")) return "🔊";
+  if (cat.includes("gaming") || name.includes("gaming") || name.includes("game")) return "🎮";
+  if (cat.includes("audio") || name.includes("headphone") || name.includes("earphone") || name.includes("earbud") || name.includes("headset")) return "🎧";
+  if (cat.includes("accessori") || name.includes("power bank") || name.includes("webcam") || name.includes("charger")) return "🔌";
+  return "📦";
+}
 type CartItem = {
   id: string;
   cartId: string;
@@ -171,11 +189,12 @@ useEffect(() => {
 
       if (response.success && response.data) {
         setCart(response.data);
-      } else if (!response.success) {
-        setError(response.error ?? "Failed to load cart.");
+      } else if (!getStoredToken()) {
+        setUser(null);
+        setCart(null);
       }
     } catch {
-      setError("Failed to load cart.");
+      // Cart loading failure should not prevent product search.
     }
   }
 
@@ -188,11 +207,12 @@ useEffect(() => {
     try {
       const response = await apiFetch<Order[]>("/api/orders");
 
-      if (!response.success || !response.data) {
-        return;
+      if (response.success && response.data) {
+        setCurrentOrder(selectBuyerHomeOrder(response.data) ?? null);
+      } else if (!getStoredToken()) {
+        setUser(null);
+        setCurrentOrder(null);
       }
-
-      setCurrentOrder(selectBuyerHomeOrder(response.data) ?? null);
     } catch {
       // Search should still work if order lookup fails.
     }
@@ -490,15 +510,7 @@ useEffect(() => {
 
       <nav className="relative z-20 flex items-center justify-between border-b border-white/[0.06] px-6 py-5 md:px-12">
         <div className="flex items-center gap-3">
-          <div
-            className="flex h-9 w-9 items-center justify-center rounded-xl text-white"
-            style={{
-              background:
-                "linear-gradient(135deg, #7c3aed, #4f46e5)",
-              boxShadow:
-                "0 4px 16px rgba(124,58,237,0.4)",
-            }}
-          >
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-white transition hover:border-violet-500/30">
             <BrandIcon size={18} />
           </div>
 
@@ -822,15 +834,14 @@ useEffect(() => {
               </div>
 
               <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1 text-xs text-emerald-300">
-  {data.intent.source === "fallback"
-    ? data.results.semanticEnabled
-      ? "Local fallback · Semantic search"
-      : "Local fallback · Catalog search"
-    : data.results.semanticEnabled
-      ? "Gemini intent · Semantic search"
-      : "Gemini intent · Catalog search"}
-</span>
-
+                {data.intent.source === "fallback"
+                  ? data.results.semanticEnabled
+                    ? "Intent: Local fallback · Semantic search"
+                    : "Intent: Local fallback · Catalog search"
+                  : data.results.semanticEnabled
+                    ? "Intent: Gemini AI · Semantic search"
+                    : "Intent: Gemini AI · Catalog search"}
+              </span>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -882,7 +893,15 @@ useEffect(() => {
                 >
                   <div className="flex gap-5">
                     <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-cyan-500/10 text-4xl">
-                      🎧
+                      {result.product.imageUrl ? (
+                        <img
+                          src={result.product.imageUrl}
+                          alt={result.product.name}
+                          className="h-full w-full object-contain p-2 rounded-lg"
+                        />
+                      ) : (
+                        getProductIcon(result.product.category?.name, result.product.name)
+                      )}
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -891,11 +910,12 @@ useEffect(() => {
                           #{index + 1} recommendation
                         </span>
 
-                        <span className="rounded-full bg-white/[0.06] px-2 py-1 text-[10px] text-white/40">
-                          {(
-                            result.relevanceScore * 100
-                          ).toFixed(0)}
-                          % match
+                        <span className="rounded-full bg-white/[0.06] border border-white/[0.08] px-2.5 py-0.5 text-[11px] font-medium text-violet-300">
+                          {index === 0
+                            ? "Best match"
+                            : result.relevanceScore >= 0.7
+                              ? "Strong match"
+                              : "Relevant match"}
                         </span>
                       </div>
 

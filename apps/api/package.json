@@ -7,8 +7,9 @@
     "build": "tsc --project tsconfig.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit --project tsconfig.json",
-    "test": "vitest run",
-    "embeddings:index": "node dist/apps/api/src/scripts/indexEmbeddings.js"
+    "test": "node --env-file=../../.env.test ../../node_modules/vitest/vitest.mjs run",
+    "embeddings:index": "node dist/apps/api/src/scripts/indexEmbeddings.js",
+    "seed": "node dist/apps/api/src/scripts/seedCatalog.js"
   },
   "dependencies": {
     "@intentflow/ai": "*",
