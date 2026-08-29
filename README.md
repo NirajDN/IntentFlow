@@ -6,7 +6,7 @@
 
 ### AI-Native Commerce Orchestration
 
-> **AI proposes. Policy decides. Merchant approves. Razorpay executes.**
+ **AI proposes. Policy decides. Merchant approves. Razorpay executes.**
 
 IntentFlow is a full-stack, intent-driven commerce platform that transforms natural-language shopping requests into controlled, policy-aware purchasing workflows.
 
