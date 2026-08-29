@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { apiFetch, setStoredSession } from "@/lib/api";
+import BrandIcon from "@/components/BrandIcon";
 import type { AuthSession } from "@intentflow/shared";
 
 export default function LoginPage() {
@@ -57,9 +58,7 @@ export default function LoginPage() {
               boxShadow: "0 4px 16px rgba(124,58,237,0.4)",
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-            </svg>
+            <BrandIcon size={18} />
           </div>
           <span className="text-lg font-bold tracking-tight">IntentFlow</span>
         </Link>
