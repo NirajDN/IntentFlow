@@ -309,6 +309,7 @@ IntentFlow/
 │           │   ├── register/
 │           │   ├── cart/
 │           │   ├── checkout/
+│           │   ├── orders/
 │           │   └── merchant/
 │           │       ├── page.tsx
 │           │       ├── products/
@@ -317,7 +318,6 @@ IntentFlow/
 │           │
 │           └── lib/
 │               └── api.ts
-│
 ├── packages/
 │   │
 │   ├── ai/
@@ -802,6 +802,30 @@ Your order is ready for Razorpay payment.
 ```
 
 ---
+### Order History
+
+Buyers can access `/orders` to view their complete order history and track the current state of every order.
+
+The order history displays:
+
+* Order status
+* Order date
+* Product name
+* Quantity
+* Unit price
+* Order total
+* Payment state
+* Payment / resume-payment action when applicable
+
+Supported order states include:
+
+```text
+PENDING_APPROVAL
+APPROVED
+PAYMENT_PENDING
+PAID
+CANCELLED
+FAILED
 
 # 🏪 Merchant Experience
 
@@ -984,10 +1008,12 @@ The Next.js application should generate these routes:
 
 ```text
 /
+/
  /login
  /register
  /cart
  /checkout
+ /orders
  /merchant
  /merchant/products
  /merchant/products/new
