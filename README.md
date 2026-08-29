@@ -18,9 +18,9 @@ Instead of navigating traditional product catalogs, buyers simply describe what 
 
 ---
 ---
-<img width="112" height="112" alt="amaze" src="https://github.com/user-attachments/assets/4cb8660f-dfe8-4e55-8f5c-ee04cf998a34" />
+<!--<img width="112" height="112" alt="amaze" src="https://github.com/user-attachments/assets/4cb8660f-dfe8-4e55-8f5c-ee04cf998a34" />
 <img width="112" height="112" alt="party" src="https://github.com/user-attachments/assets/1c898aed-98d9-4287-9c2b-79987311df81" />
-<img width="112" height="112" alt="pokeball-almost" src="https://github.com/user-attachments/assets/63d65b54-1a25-451c-b4fd-83363a92aeef" />
+<img width="112" height="112" alt="pokeball-almost" src="https://github.com/user-attachments/assets/63d65b54-1a25-451c-b4fd-83363a92aeef" />-->
 
 ## ✨ Overview
 
