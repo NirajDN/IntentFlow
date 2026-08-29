@@ -1,4 +1,6 @@
-<img width="1254" height="1254" alt="IntentFlow Logo" src="https://github.com/user-attachments/assets/506aad52-c961-4440-adfe-5695d9772511" />
+<div align="center">
+
+<img width="140" alt="IntentFlow Logo" src="https://github.com/user-attachments/assets/506aad52-c961-4440-adfe-5695d9772511" />
 
 # IntentFlow
 
@@ -12,6 +14,9 @@ Instead of navigating traditional product catalogs, buyers simply describe what 
 
 **From intent to payment — with AI intelligence, policy control, and merchant oversight built into the flow.**
 
+</div>
+
+---
 ---
 
 ## ✨ Overview
