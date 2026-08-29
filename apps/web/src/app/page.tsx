@@ -68,18 +68,27 @@ function getProductIcon(categoryName?: string | null, productName?: string): str
   const cat = (categoryName || "").toLowerCase();
   const name = (productName || "").toLowerCase();
 
-  if (cat.includes("laptop") || name.includes("laptop") || name.includes("notebook")) return "💻";
-  if (cat.includes("monitor") || name.includes("monitor") || name.includes("display")) return "🖥️";
-  if (cat.includes("keyboard") || name.includes("keyboard")) return "⌨️";
-  if (cat.includes("mice") || cat.includes("mouse") || name.includes("mouse")) return "🖱️";
-  if (cat.includes("phone") || name.includes("phone") || name.includes("smartphone")) return "📱";
-  if (cat.includes("storage") || name.includes("ssd") || name.includes("hard drive") || name.includes("hdd")) return "💾";
-  if (cat.includes("network") || name.includes("router") || name.includes("wi-fi")) return "🌐";
-  if (cat.includes("speaker") || name.includes("speaker") || name.includes("soundbar")) return "🔊";
-  if (cat.includes("gaming") || name.includes("gaming") || name.includes("game")) return "🎮";
-  if (cat.includes("audio") || name.includes("headphone") || name.includes("earphone") || name.includes("earbud") || name.includes("headset")) return "🎧";
-  if (cat.includes("accessori") || name.includes("power bank") || name.includes("webcam") || name.includes("charger")) return "🔌";
-  return "📦";
+ if (cat.includes("laptop") || name.includes("laptop") || name.includes("notebook")) return "💻";
+if (cat.includes("monitor") || name.includes("monitor") || name.includes("display")) return "🖥️";
+if (cat.includes("keyboard") || name.includes("keyboard")) return "⌨️";
+if (cat.includes("mice") || cat.includes("mouse") || name.includes("mouse")) return "🖱️";
+
+if (
+  cat.includes("audio") ||
+  name.includes("headphone") ||
+  name.includes("earphone") ||
+  name.includes("earbud") ||
+  name.includes("headset")
+) return "🎧";
+
+if (cat.includes("phone") || name.includes("phone") || name.includes("smartphone")) return "📱";
+
+if (cat.includes("storage") || name.includes("ssd") || name.includes("hard drive") || name.includes("hdd")) return "💾";
+if (cat.includes("network") || name.includes("router") || name.includes("wi-fi")) return "🌐";
+if (cat.includes("speaker") || name.includes("speaker") || name.includes("soundbar")) return "🔊";
+if (cat.includes("gaming") || name.includes("gaming") || name.includes("game")) return "🎮";
+if (cat.includes("accessori") || name.includes("power bank") || name.includes("webcam") || name.includes("charger")) return "🔌";
+return "📦";
 }
 type CartItem = {
   id: string;
