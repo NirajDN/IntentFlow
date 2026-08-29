@@ -1,6 +1,8 @@
 <div align="center">
 <!--<img width="140" alt="IntentFlow Logo" src="https://github.com/user-attachments/assets/506aad52-c961-4440-adfe-5695d9772511" />-->
-<img width="140" alt="IntentFlow Logo" src="https://github.com/user-attachments/assets/63d65b54-1a25-451c-b4fd-83363a92aeef" />
+<!--<img width="140" alt="IntentFlow Logo" src="https://github.com/user-attachments/assets/63d65b54-1a25-451c-b4fd-83363a92aeef" />
+ <img width="140" alt="IntentFlow Logo" src="https://github.com/user-attachments/assets/63d65b54-1a25-451c-b4fd-83363a92aeef" />-->
+<img width="140" alt="pokeball-almost (1)" src="https://github.com/user-attachments/assets/7e33dfeb-2074-41f8-9d49-495f7e195efe" />
 
 # IntentFlow
 
