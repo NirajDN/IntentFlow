@@ -9,6 +9,7 @@
 
 # IntentFlow
 
+
 ### AI-Native Commerce Orchestration
 
  **AI proposes. Policy decides. Merchant approves. Razorpay executes.**
