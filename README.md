@@ -6,7 +6,6 @@
 <img width="140" alt="pokeball-almost (1)" src="https://github.com/user-attachments/assets/7e33dfeb-2074-41f8-9d49-495f7e195efe" />
 # IntentFlow
 
-
 ### AI-Native Commerce Orchestration
 
  **AI proposes. Policy decides. Merchant approves. Razorpay executes.**
